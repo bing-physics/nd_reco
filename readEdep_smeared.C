@@ -1,0 +1,81 @@
+#include <iostream>
+#include <TFile.h>
+#include <TTree.h>
+#include <TBranch.h>
+#include <TBits.h>
+#include <TObjString.h>
+#include <string>
+
+
+using std::cout;
+using std::endl;
+void readEdep_smeared(){
+  
+  TFile file("STT0_gsim1_0_1e18.4321.edep.smeared.root", "READ");
+  TTree * tree = (TTree *) file.Get("edep_smeared_tree");
+  
+  const int kNPmax = 300;
+
+  int NPar;
+  int NPrim;
+  double RecoP4[kNPmax][4];
+  double TrueP4[kNPmax][4];
+  int  Pdg[kNPmax];
+  int  TrackId[kNPmax];
+  int  ParentId[kNPmax];
+  int  TopParentId[kNPmax];
+  double   Len[kNPmax];
+  int  NXhit[kNPmax];
+  int  NYhit[kNPmax];
+  char      Info[kNPmax][10];
+  //  TObjString *Info[kNPmax];
+  //  std::string Info;
+  TBranch *brNPar= tree->GetBranch("NPar");
+  TBranch *brNPrim= tree->GetBranch("NPrim");
+  TBranch *brRecoP4= tree->GetBranch("RecoP4");
+  TBranch *brTrueP4= tree->GetBranch("TrueP4");
+  TBranch *brPdg=tree->GetBranch("Pdg");
+  TBranch *brTrackId=tree->GetBranch("TrackId");
+  TBranch *brParentId=tree->GetBranch("ParentId");
+  TBranch *brTopParentId=tree->GetBranch("TopParentId");
+  TBranch *brLen=tree->GetBranch("Len");
+  TBranch *brNXhit=tree->GetBranch("NXhit");
+  TBranch *brNYhit=tree->GetBranch("NYhit");
+  TBranch *brInfo=tree->GetBranch("Info");
+  
+  brNPar-> SetAddress ( &NPar);
+  brNPrim-> SetAddress ( &NPrim);
+  brRecoP4-> SetAddress (RecoP4);
+  brTrueP4-> SetAddress (TrueP4);
+  brPdg-> SetAddress ( Pdg);
+  brTrackId-> SetAddress ( TrackId);
+  brParentId-> SetAddress ( ParentId);
+  brTopParentId->SetAddress(TopParentId);
+  brLen-> SetAddress ( Len);
+  brNXhit-> SetAddress ( NXhit);
+  brNYhit-> SetAddress ( NYhit);
+  brInfo -> SetAddress ( Info);
+  
+
+  for(int i=0; i < tree->GetEntries(); i++) {
+    tree->GetEntry(i);
+    printf("\n -------------------------------------------------");
+    //  std::cout<<"info:"<<Info<<std::endl;
+    printf("\n %d   %5d nprim: %5d", i+4859, NPar,NPrim);
+    for(int ip=0; ip<NPar; ip++) {
+      std::string s;
+      for(int j=0;j<10;j++){
+	s+=Info[ip][j];
+      }
+      printf("\n | %6d | %3d | %3d | %3d | %8.1f | %8.1f | %8.1f ||  %8.1f | %8.1f | %8.1f || %7.1f | %5d | %5d | %s",
+	     Pdg[ip], TrackId[ip], ParentId[ip], TopParentId[ip],
+	     RecoP4[ip][0],RecoP4[ip][1],RecoP4[ip][2],
+	     TrueP4[ip][0],TrueP4[ip][1],TrueP4[ip][2],
+	     Len[ip], NXhit[ip], NYhit[ip], s.c_str()
+	     );
+      
+    }
+  }
+
+
+}
