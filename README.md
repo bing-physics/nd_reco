@@ -9,3 +9,7 @@
 1. cmake .
 2. make
 3. ./run.sh
+
+# how to read output
+
+> root readEdep_smeared.C
