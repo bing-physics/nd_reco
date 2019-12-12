@@ -598,7 +598,7 @@ bool smearChargedPar_stt(int trackid){
     postPos= (h.Start+h.Stop)*0.5;
     //    if(h.Contrib[0]!=trackid) { std::cout<<" !!!!!!!!!!!!!!!!!!!!! wrong trackid"<<trackid<<" ihit"<<ihit<<" nhit:"<<nhit<<std::endl; showAll();  std::exit(EXIT_FAILURE);}
     //    if(h.Contrib.size()>1) {  std::cout<<" contribution more than 2 tracks ihit:"<<ihit<<" nhit:"<<nhit<<" i:"<<i<<std::endl;  continue;}
-    if(postPos.T()< prePos.T()) { 																					
+    if(postPos.T()< prePos.T()) { // the time reversed hits are usually bad hits, break it
       //      if((i-ihit)*1.0<=0.5*nhit) std::cout<<"trackid:"<<trackid<<" time reverse, cut! ihit:"<<ihit<<" nhit+ihit:"<<nhit+ihit<<" i:"<<i<<std::endl;
       assert((i-ihit)*1.0>0.5*nhit || nhit<9);
       break;}
@@ -676,13 +676,6 @@ bool smearChargedPar_stt(int trackid){
   herr_dipAngle_stt->Fill(dipAng_smear-dipAng, namecode);
   herr_pt_stt->Fill((Pt_smear-Pt)/Pt*100,namecode);
   herr_p_stt->Fill((P_smear-P)/P*100,namecode);
-  //  std::cout<<"sigma_dipAng:"<<sigma_dipAng<<std::endl;
-  //  std::cout<<"dPt2Pt:"<<dPt2Pt<<" sigma_thetaX/thetaX:"<<sigma_thetaX/thetaX<<" sigma_thetaYZ/thetaYZ:"<<sigma_thetaYZ/thetaYZ<<std::endl;
-  //  std::cout<<"sigma_thetaX:"<<sigma_thetaX<<" sigma_thetaYZ:"<<sigma_thetaYZ<<std::endl;
-  //  std::cout<<"Pt:"<<Pt<<" Px:"<<Px<<std::endl;
-  //  std::cout<<"Pt_smear:"<<Pt_smear<<" Px_smear:"<<Px_smear<<" Px_smear2:"<<Px_smear2<<" px ratio:"<<Px_smear/Px<<" 2:"<<Px_smear2/Px<<std::endl;
-  //  std::cout<<"---------iFillPar:"<<iFillPar<<" Px_smear:"<<Px_smear<<" Py_smear:"<<Py_smear<<std::endl;
-  //  std::cout<<"trackid:"<<trackid<<" parentId:"<<event->Trajectories[trackid].ParentId<<" pdg:"<<pdgMap[event->Trajectories[trackid].Name]<<std::endl;
   //  std::cout<<"stt smear succeed, L"<<L<<" nXhit:"<<nXhit<<" nYhit:"<<nYhit<<std::endl;
   fill1Par2tree(Px_smear*1000., Py_smear*1000., Pz_smear*1000., trackid, L*1000, nXhit, nYhit, "sttsmear  "); // always use MeV to fill
   
@@ -716,24 +709,9 @@ void smearRemnantGamma(int trackid, int primaryId=-1){
 }
 
 void smearGamma(int trackid){
-  // common cases:
-  //  gamma daughters: 50 e- 51 e+
-  //  gamma daughters: 19 e- 20 gamma
-  //  gamma daughters:
-  //  gamma daughters: 9 e-
-  //  gamma daughters: 9 e- 10 e- 11 e+
-  // gamma daughters: 45 e- 46 e- 47 e-
-  // gamma daughters: 135 e- 136 e-
-  // gamma daughters: 22 e- 23 e- 24 e- 25 e-
-  // rare cases:
-  //    gamma daughters: 85 neutron 86 neutron
-  //    gamma daughters: 44 proton 45 neutron 46 neutron
-  //    gamma daughters: 5 neutron 6 neutron 7 pi+ 8 neutron 9 e-
-  //    gamma daughters: 65 pi- 66 pi+ 67 proton
-  //    gamma daughters: 9 gamma
-  //    gamma daughters: 322 proton 323 pi- 324 pi+ 342 gamma 343 gamma
-
-  // only the last rare case, the daughters not connected, all other cases, daughters connected.
+  // most time you smear gamma by its daughters one by one, but you don't want to go deep in this loop
+  // gamma->gamma->gamma (the third gamma here, we won't smear its daughters but treat it as a remnant gamma
+  // pi0->gamma->gamma( do the same thing for the second gamma) 
   //  std::cout<<"start to smear gamma:"<<trackid<<std::endl;
   int parentId=event->Trajectories[trackid].ParentId;
   int grandId=(parentId==-1)?-1:event->Trajectories[parentId].ParentId;
