@@ -11,11 +11,12 @@ using std::cout;
 using std::endl;
 void readEdep_smeared(){
   
-  TFile file("STT0_gsim1_0_1e18.4321.edep.smeared.root", "READ");
+  TFile file("STT0_gsim1_0_1e18.4321.edep.smeared_truemusmearN.root","READ");
   TTree * tree = (TTree *) file.Get("edep_smeared_tree");
   
   const int kNPmax = 300;
 
+  int IEntry;
   int NPar;
   int NPrim;
   double RecoP4[kNPmax][4];
@@ -30,6 +31,7 @@ void readEdep_smeared(){
   char      Info[kNPmax][10];
   //  TObjString *Info[kNPmax];
   //  std::string Info;
+  TBranch *brIEntry=tree->GetBranch("IEntry");
   TBranch *brNPar= tree->GetBranch("NPar");
   TBranch *brNPrim= tree->GetBranch("NPrim");
   TBranch *brRecoP4= tree->GetBranch("RecoP4");
@@ -43,6 +45,7 @@ void readEdep_smeared(){
   TBranch *brNYhit=tree->GetBranch("NYhit");
   TBranch *brInfo=tree->GetBranch("Info");
   
+  brIEntry-> SetAddress ( &IEntry);
   brNPar-> SetAddress ( &NPar);
   brNPrim-> SetAddress ( &NPrim);
   brRecoP4-> SetAddress (RecoP4);
@@ -57,25 +60,27 @@ void readEdep_smeared(){
   brInfo -> SetAddress ( Info);
   
 
-  for(int i=0; i < tree->GetEntries(); i++) {
+  for(int i=0; i < 50; i++) {
     tree->GetEntry(i);
-    printf("\n -------------------------------------------------");
+    printf("\n ----------------------------------------------------------------------------------");
     //  std::cout<<"info:"<<Info<<std::endl;
-    printf("\n %d   %5d nprim: %5d", i+4859, NPar,NPrim);
+    printf("\n %d ientry:%d   nprim: %5d", i, IEntry,NPrim);
+    printf("\n");
+    printf("\n |   pdg  | trkid paren topPar|  recoPx    recoPy     recoPz     recoE  ||    truePx     truePy     truePz      trueE || length    nxhit   nyhit | INFO");
     for(int ip=0; ip<NPar; ip++) {
       std::string s;
       for(int j=0;j<10;j++){
 	s+=Info[ip][j];
       }
-      printf("\n | %6d | %3d | %3d | %3d | %8.1f | %8.1f | %8.1f ||  %8.1f | %8.1f | %8.1f || %7.1f | %5d | %5d | %s",
+      printf("\n | %6d | %3d | %3d | %3d | %8.1f | %8.1f | %8.1f | %8.1f ||  %8.1f | %8.1f | %8.1f | %8.1f || %7.1f | %5d | %5d | %s",
 	     Pdg[ip], TrackId[ip], ParentId[ip], TopParentId[ip],
-	     RecoP4[ip][0],RecoP4[ip][1],RecoP4[ip][2],
-	     TrueP4[ip][0],TrueP4[ip][1],TrueP4[ip][2],
+	     RecoP4[ip][0],RecoP4[ip][1],RecoP4[ip][2], RecoP4[ip][3],
+	     TrueP4[ip][0],TrueP4[ip][1],TrueP4[ip][2],TrueP4[ip][3],
 	     Len[ip], NXhit[ip], NYhit[ip], s.c_str()
 	     );
-      
+      if(std::isnan(RecoP4[ip][0])) std::cout<<" nan exist"<<std::endl;
     }
   }
-
+  printf("\n");
 
 }

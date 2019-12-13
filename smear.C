@@ -1,3 +1,7 @@
+//future improvement:
+//NOTE: better external pi0 stats, beta stats
+//NOTE: ecal energy smearing equation only works for em shower, but currently used for any particles failed STT smearing
+
 // decay: pi+ -> mu+
 // decay: mu+ -> e+
 // decay : kaon- -> e- + pi0
@@ -44,7 +48,8 @@ TH1 *herr_theta_ecal;
 TH1 *herr_phi_ecal;
 TH1 *herr_theta_N;
 TH1 *herr_phi_N;
-TH1 *herr_p_equa_N;
+TH2 *herr_E_equa_N;
+TH2 *herr_p_equa_N;
 TH1 *herr_p_beta_N;
 TH1 *herr_p_pi0;
 TH1 *herr_theta_pi0;
@@ -54,8 +59,9 @@ TFile *outf;
 TFile *outTreeF;
 TTree * tree;
 
-bool isnumuBar_Htarget;
-
+bool isHtarget;
+int iChannel;
+int neutrinoPdg;
 TDatabasePDG *dbpdg;
 
 TH2* hPi0_mom_recotrue;
@@ -74,6 +80,7 @@ std::map<int, std::vector<int> > ecalMap_prim2;
 
 
 const int kNPmax = 300;
+int         brIEntry;
 int         brNPar;
 int         brNPrim;
 double      brRecoP4[kNPmax][4];
@@ -90,6 +97,18 @@ int iFillPar;
 void smearPar(int trackid, std::string name);
 void findEvis_forCell(int starthit, int nhit, std::map<int, double> &cellId_Evis);
 void findEvis_forCell(std::vector<int> allhits, std::map<int, double> &cellId_Evis);
+
+bool inFV(double x, double y, double z){
+  //  double centerX=0.;
+  double centerY=-2384.73;  // mm
+  double centerZ=23910; // mm
+
+  if(abs(x)>1490) return false;
+  double r=sqrt((y-centerY)*(y-centerY)+(z-centerZ)*(z-centerZ));
+  if(r>1800) return false;
+  return true;
+}
+
 
 void cleanBranch(){
   brNPar=0;
@@ -172,6 +191,7 @@ int  findTopParent(int trackid){
 }
 
 void fill1Par2tree(double recoPx, double recoPy, double recoPz, int trackid, double len, int nXhit, int nYhit, const char info[10]){
+  //  if(std::isnan(recoPx) || std::isnan(recoPy) || std::isnan(recoPz))  { std::cout<<"fill nan"; std::exit(EXIT_FAILURE);}
   brRecoP4[iFillPar][0]=recoPx;
   brRecoP4[iFillPar][1]=recoPy;
   brRecoP4[iFillPar][2]=recoPz;
@@ -307,8 +327,8 @@ void findEvis_forCell(std::vector<int> hitchains, std::map<int, double> &cellId_
   cellId_Evis.clear();
   assert(hitchains.size()%2==0);
   //  if(hitchains.size()%2!=0) std::exit(EXIT_FAILURE);
-  for(int i=0;i<hitchains.size()/2;i++){
-    for(unsigned int j = hitchains[2*i]; j <= hitchains[2*i+1]; j++){
+  for(unsigned int i=0;i<hitchains.size()/2;i++){
+    for(int j = hitchains[2*i]; j <= hitchains[2*i+1]; j++){
       const TG4HitSegment& h = event->SegmentDetectors["ECAL"].at(j);
       double x = 0.5*(h.Start.X()+h.Stop.X());
       double y = 0.5*(h.Start.Y()+h.Stop.Y());
@@ -464,8 +484,8 @@ void bruteforceFindHit_ecal(int trackid, int primid, std::vector<int> &allhits){
   assert(primid!=-1);
   assert(trackid!=primid);
   std::vector<int> hitchains=ecalMap_prim2[primid];
-  for(int i=0;i<hitchains.size()/2;i++){
-    for(unsigned int j = hitchains[2*i]; j <= hitchains[2*i+1]; j++){
+  for(unsigned int i=0;i<hitchains.size()/2;i++){
+    for(int j = hitchains[2*i]; j <= hitchains[2*i+1]; j++){
       if( !isthisParent(event->SegmentDetectors["ECAL"].at(j).Contrib[0], trackid)) { continue;}
       //      std::cout<<"j:"<<j<<" check1pass"<<std::endl;
       if(allhits.size()==0) {allhits.push_back(j);allhits.push_back(j);}
@@ -515,12 +535,11 @@ bool smearPar_ecal(int trackid, int primaryId=-1){
     //    std::cout<<"ecal smear failed due to no detectable ecal hit"<<std::endl; 
     return false;}
   double E=event->Trajectories[trackid].InitialMomentum.E();
-  //  double P=event->Trajectories[trackid].InitialMomentum.P();
   double de2e= 0.057/sqrt(E/1000.);
   double E_smear= E*ran->Gaus(1,de2e); // MeV
   int pdg=event->Trajectories[trackid].PDGCode;
   double m=dbpdg->GetParticle(pdg)->Mass() * 1000; // MeV
-  double P_smear=sqrt(E_smear*E_smear-m*m); // MeV
+  double P_smear=E_smear>m?sqrt(E_smear*E_smear-m*m):0; // MeV
 
   double p0                        =    0.0034793;
   double p1                        =   -0.0151348;
@@ -532,17 +551,18 @@ bool smearPar_ecal(int trackid, int primaryId=-1){
   // sigma Z fitting function:  [0]*log(x)+[1]
   //sigmaX ,sigmaZ, plot extracted from paper <<A FLUKA simulation of the KLOE electromagnetic calorimeter>> 
   // fit on my own 
-  //  std::cout<<"smear ecal 4"<<std::endl;
+
   double sigmaX= p0*E*exp(p1*E+p2)+p3;    // cm  along circumferential
   double sigmaZ= q0*log(E)+q1;  // cm  along fiber/axial 
   double Pos_smear[3];
   smearFirstHitPosition( starthit, sigmaX, sigmaZ, Pos_smear); // sigmaZ is actually sigmaY in local coordinate of Ttrd2
-  //  std::cout<<"smear ecal 5"<<std::endl;
+
   TVector3 firstHitPos_smear(Pos_smear);
   TVector3 vtx=event->Primaries[0].Position.Vect(); 
   TVector3 dir=firstHitPos_smear-vtx;  
   TVector3 P3_smear=P_smear*dir.Unit();
   //  std::cout<<"ecal smear succeeded, fill it"<<std::endl;
+  
   double theta=event->Trajectories[trackid].InitialMomentum.Theta();
   double phi=event->Trajectories[trackid].InitialMomentum.Phi();
   double theta_smear=dir.Theta();
@@ -552,6 +572,7 @@ bool smearPar_ecal(int trackid, int primaryId=-1){
   herr_phi_ecal->Fill((phi_smear-phi)/phi*100);
   
   fill1Par2tree(P3_smear.X(), P3_smear.Y(), P3_smear.Z(),  trackid, -999, -999, -999, "ecalsmear ");
+  return true;
 }
 
 bool smearChargedPar_stt(int trackid){
@@ -698,8 +719,6 @@ void smearRemnantGamma(int trackid, int primaryId=-1){
   
   if(primaryId==-1) {
     int parentId=event->Trajectories[trackid].ParentId;
-    int grandId=(parentId==-1)?-1:event->Trajectories[parentId].ParentId;
-    //    int grand2Id=(grandId==-1)?-1:event->Trajectories[grandId].ParentId;
     if(parentId==-1) primaryId=trackid;
     else if(event->Trajectories[parentId].Name=="pi0") primaryId=trackid;
     else {std::cout<<"remnant gamma parent becoming primaryId check:"<<event->Trajectories[parentId].Name<<std::endl; primaryId=parentId;}
@@ -767,7 +786,7 @@ void smearPi0_external(int trackid){
   int iThetabin=TMath::CeilNint(Theta/(highAng-lowAng)*nAngbin);
   int iPhibin=TMath::CeilNint(abs(Phi)/(highAng-lowAng)*nAngbin);
 
-  if(iPbin>nPbin) std::cout<<"-------> out of range P:"<<P<<std::endl;
+  if(iPbin>nPbin) std::cout<<"iPbin -------> out of hPi0_mom_recotrue range P:"<<P<<std::endl;
   //  std::cout<<" get random P start"<<"iPbin:"<<iPbin<<std::endl;
   double P_smear= P<4?hPi0_mom_recotrue->ProjectionY("", iPbin,iPbin)->GetRandom():P; // GeV
   if(iPbin>37){ // the stats is too little, have to do in  this way, right now, treat the reco mean same as true mean
@@ -846,29 +865,42 @@ void smearPi0(int trackid){
   else std::cout<<" ==pi0==> more than 3 children from pi0, check!!!!"<<std::endl;
 }
 
-bool smearN_byEquation(double &psmear){  // only for antinumu events with 1 neutron produced 
-  //  std::cout<<"smear neutron by equation"<<std::endl;
+bool smearN_byEquation(double &psmear, int trackid){  // only for antinumu events with 1 neutron produced 
+  //  std::cout<<"--------------------------------------smear neutron by equation "<<neutrinoPdg<<std::endl;
   const double mpr = dbpdg->GetParticle(2212)->Mass()*1000;
   //  const double mpip = 0.13957018;
   //  const double mpi0 = 0.1349766;
-  const double mmu = dbpdg->GetParticle(13)->Mass()*1000;
+  const double mmu = dbpdg->GetParticle(neutrinoPdg)->Mass()*1000; // actually it could be electron
   const double mn = dbpdg->GetParticle(2112)->Mass()*1000;
   
 
   TLorentzVector p4hadreco(0,0,0,0);  
-  if(brPdg[0]!=-13) {std::cout<<"the first smeared track is not mu+, something must be wrong, check!!!!"<<std::endl; return false;}
+  assert(abs(brPdg[0])==13 || abs(brPdg[0])==11);
+  //  if(iChannel==0) std::cout<<"smearN_byEquation: brPdg[0]:"<<brPdg[0]<<" iFillPar:"<<iFillPar<<std::endl;
+  //  if(iChannel==0) std::cout<<" px:"<<brRecoP4[0][0]<<" py:"<<brRecoP4[0][1]<<" pz:"<<brRecoP4[0][2]<<" E:"<<brRecoP4[0][3]<<std::endl;
+  //  if(iChannel==0) std::cout<<" true px:"<<brTrueP4[0][0]<<" py:"<<brTrueP4[0][1]<<" pz:"<<brTrueP4[0][2]<<" E:"<<brTrueP4[0][3]<<std::endl;
+  //  if(abs(brPdg[0])!=13 && abs(brPdg[0])!=11) {std::cout<<"the first smeared track is not mu+, something must be wrong, check!!!!"<<std::endl; return false;}
   TLorentzVector p4mureco(brRecoP4[0][0],brRecoP4[0][1],brRecoP4[0][2],brRecoP4[0][3]);
   for(int i=1;i<iFillPar;i++){
+    //    if(iChannel==0) std::cout<<"i:"<<i<<" brPdg[i]:"<<brPdg[i]<<std::endl;
     p4hadreco+=TLorentzVector(brRecoP4[i][0],brRecoP4[i][1],brRecoP4[i][2],brRecoP4[i][3]);
   }
+  //  p4hadreco.Print();
   double en = 0.5*( mmu*mmu + pow(p4hadreco.M(),2) + mpr*mpr - mn*mn - 2*mpr*(p4mureco.E() + p4hadreco.E()) +
   		    2*p4mureco*p4hadreco)/(p4mureco.E() + p4hadreco.E() - p4mureco.Pz() - p4hadreco.Pz() - mpr);
   en = en - p4mureco.E() - p4hadreco.E() + mpr;
-  //  std::cout<<"en:"<<en<<" mn:"<<mn<<std::endl;
-  //  assert(en>mn);
-  if(en<mn) return false;
-  psmear=sqrt(en*en-mn*mn);
 
+
+  if(en<mn) return false;
+  double E=event->Trajectories[trackid].InitialMomentum.E();
+  double P=event->Trajectories[trackid].InitialMomentum.P();
+  //  event->Trajectories[trackid].InitialMomentum.Print();
+
+  psmear=sqrt(en*en-mn*mn);
+  if(abs(neutrinoPdg)==14)  herr_E_equa_N->Fill((en-E)/E*100, iChannel);
+  if(abs(neutrinoPdg)==14)  herr_p_equa_N->Fill((psmear-P)/P*100, iChannel);
+  //  if(iChannel==0) std::cout<<"E:"<<E<<" en:"<<en<<" err:"<<(en-E)/E*100<<std::endl;
+  //  if(iChannel==0) std::cout<<"P:"<<P<<" psme:"<<psmear<<" err:"<<(psmear-P)/P*100<<std::endl;
   return true;
 }
 
@@ -881,7 +913,7 @@ bool smearNeutron(int trackid){
   bool isECALdetectable=false;
   if(sttMap_prim2.find(trackid)!=sttMap_prim2.end()){
     const std::vector<int> &vec= sttMap_prim2[trackid];
-    for(int i=0;i<vec.size()/2;i++){
+    for(unsigned int i=0;i<vec.size()/2;i++){
       for(int j=vec[2*i];j<=vec[2*i+1];j++){
 	if(event->SegmentDetectors["Straw"].at(j).EnergyDeposit>250E-6) {isSTTdetectable=true; break;}
       }
@@ -896,8 +928,6 @@ bool smearNeutron(int trackid){
       for(auto cellE: cellId_Evis){
 	if(cellE.second > 0.1) { isECALdetectable=true;	  break;}
       }      
-      //      if(!isECALdetectable) std::cout<<"this neutron has ecal hits but none of them are detectable, check!!!"<<std::endl;  
-      //      else { std::cout<<"this neutron does have ecal hits"<<std::endl;}
     }
   }
 
@@ -915,22 +945,26 @@ bool smearNeutron(int trackid){
   double P_smear;
   double P=event->Trajectories[trackid].InitialMomentum.P();
   bool PequationSmearSucceed=false;
-  if(isnumuBar_Htarget) PequationSmearSucceed=smearN_byEquation(P_smear);
-  if(PequationSmearSucceed)   herr_p_equa_N->Fill((P_smear-P)/P*100);
-  if(!PequationSmearSucceed || !isnumuBar_Htarget)  {
+  if(isHtarget) PequationSmearSucceed=smearN_byEquation(P_smear, trackid);
+  //  if(PequationSmearSucceed && abs(neutrinoPdg)==14 )   herr_p_equa_N->Fill((P_smear-P)/P*100, iChannel);
+  if(!PequationSmearSucceed || !isHtarget)  {
     double E=event->Trajectories[trackid].InitialMomentum.E();
-    double m=event->Trajectories[trackid].InitialMomentum.Mag();
+    //    double m=event->Trajectories[trackid].InitialMomentum.Mag();
     double beta=P/E;
     int iTrueBetaBin=TMath::CeilNint(beta/(1.-0.)*100);
     double beta_smear=isSTTdetectable?hNeutron_beta_recotrue_stt->ProjectionY("",iTrueBetaBin,iTrueBetaBin)->GetRandom(): hNeutron_beta_recotrue_ecal->ProjectionY("",iTrueBetaBin,iTrueBetaBin)->GetRandom();
-    P_smear=m*beta_smear/sqrt(1-beta_smear*beta_smear);    
-    //    std::cout<<"isSTTdetectable: "<<isSTTdetectable<<" ---------------------------------------------->P:"<<P<<" P_smear:"<<P_smear<<" beta:"<<beta<<" beta_smear:"<<beta_smear<<" iTrueBetaBin:"<<iTrueBetaBin<<" sttbin entry:"<<hNeutron_beta_recotrue_stt->ProjectionY("",iTrueBetaBin,iTrueBetaBin)->GetEntries()<<" ecal:"<<hNeutron_beta_recotrue_ecal->ProjectionY("",iTrueBetaBin,iTrueBetaBin)->GetEntries()<<std::endl;
+    //NOTE:  don't use this (when beta_smear>1, P_smear will become nan)  ----->  P_smear=m*beta_smear/sqrt(1-beta_smear*beta_smear);    
+    P_smear=E*beta_smear;  // this sometimes will make P_smear > E true, but that's okay
+    if(beta_smear>1) std::cout<<" beta_smear>1"<<std::endl;
     herr_p_beta_N->Fill((P_smear-P)/P*100);
+
+    //    std::cout<<"beta:"<<beta<<" beta_smear:"<<beta_smear<<" P_smear:"<<P_smear<<std::endl;
+
   }
   double Pz_smear=P_smear*cos(Theta_smear);
   double Px_smear=P_smear*sin(Theta_smear)*cos(Phi_smear);
   double Py_smear=P_smear*sin(Theta_smear)*sin(Phi_smear);
-  //  std::cout<<"neutron smear succeed"<<std::endl;
+
   if(PequationSmearSucceed) fill1Par2tree(Px_smear, Py_smear, Pz_smear , trackid, -999, -999, -999, "NsmearEqua");
   else fill1Par2tree(Px_smear, Py_smear, Pz_smear , trackid, -999, -999, -999, "NsmearBeta");
 
@@ -1054,7 +1088,7 @@ void organizeHits_prim2(){
   sttMap_prim2.clear();
   ecalMap_prim2.clear();
   int trackid;
-  for(int i=0; i<event->SegmentDetectors["Straw"].size(); i++){
+  for(unsigned int i=0; i<event->SegmentDetectors["Straw"].size(); i++){
     trackid=event->SegmentDetectors["Straw"].at(i).PrimaryId;
     if(sttMap_prim2.find(trackid)==sttMap_prim2.end()) { sttMap_prim2[trackid].push_back(i); sttMap_prim2[trackid].push_back(i); continue;}
     if(i-sttMap_prim2[trackid].back()==1)
@@ -1063,7 +1097,7 @@ void organizeHits_prim2(){
       {sttMap_prim2[trackid].push_back(i); sttMap_prim2[trackid].push_back(i);}    
   } // for
   
-  for(int i=0; i<event->SegmentDetectors["ECAL"].size(); i++){
+  for(unsigned int i=0; i<event->SegmentDetectors["ECAL"].size(); i++){
     trackid=event->SegmentDetectors["ECAL"].at(i).PrimaryId;
     if(ecalMap_prim2.find(trackid)==ecalMap_prim2.end()) { ecalMap_prim2[trackid].push_back(i); ecalMap_prim2[trackid].push_back(i);continue;}
     if(i-ecalMap_prim2[trackid].back()==1)
@@ -1135,32 +1169,9 @@ bool checkPrimNeutron(bool &NeutronAtLast, int &Neutron_trackId){
 
 }
 
-void checkit(){
-  for (std::vector<TG4PrimaryVertex>::iterator
-	 v = event->Primaries.begin();
-       v != event->Primaries.end(); ++v) {
-    int ipar=0;
-    //    std::cout << "  particles " << v->Particles.size();
-    int nn=0;
-    int npr=0;
-    for (std::vector<TG4PrimaryParticle>::iterator
-	   p = v->Particles.begin();
-	 p != v->Particles.end(); ++p) {
-      //      std::cout << " " << p->Name;
-      if(p->Name=="proton") npr++;
-      else if(p->Name=="neutron") nn++;
-      ipar++;
-    }
-    //    std::cout << endl;
-    if(nn>1) std::cout<<"***************************************nn: "<<nn<<"  npr:"<<npr<<std::endl;
-  }
-
-}
-
-void smearEvent(int iEvent){
+void smearEvent(){
   cleanBranch();
   //  treefile.open(Form("treemap%d.txt",i));
-  gEDepSimTree->GetEntry(iEvent);
   //  std::cout<<" ############################################################## new event ####################################  "<<i<<std::endl;
   //  showAll();
   organizeHits();
@@ -1175,8 +1186,8 @@ void smearEvent(int iEvent){
   bool havePrimNeutron=false;
   bool NeutronAtLast=false;
   int neutron_trackid;
-  if(isnumuBar_Htarget) havePrimNeutron=checkPrimNeutron(NeutronAtLast, neutron_trackid);
-  if(isnumuBar_Htarget && havePrimNeutron && (!NeutronAtLast)) {
+  if(isHtarget) havePrimNeutron=checkPrimNeutron(NeutronAtLast, neutron_trackid);
+  if(isHtarget && havePrimNeutron && (!NeutronAtLast)) {
     for (int i=0;i<nPrim;i++){      
       if(event->Primaries.begin()->Particles[i].TrackId==neutron_trackid) continue;
       //      std::cout<<" ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++smearPar: "<<event->Primaries.begin()->Particles[i].Name<<" id: "<<event->Primaries.begin()->Particles[i].TrackId<<std::endl;
@@ -1249,11 +1260,16 @@ int main(int argc, char *argv[]){
   hNeutron_beta_recotrue_ecal->Smooth();
   
   outTreeF=new TFile(argv[2],"recreate");
+  double      StdHepP4    [kNPmax][4];
+  
+  TBranch * brEvtCode;
+  TObjString* EvtCode = 0;
   TBranch * brStdHepPdg=0;
   int  StdHepPdg[100];
   TTree *rootrackerTree;
 
   tree = new TTree("edep_smeared_tree"," reconstructed on edep sim");
+  tree->Branch("IEntry", &brIEntry, "IEntry/I");
   tree->Branch("NPar", &brNPar, "NPar/I");
   tree->Branch("NPrim", &brNPrim, "NPrim/I");
   tree->Branch("RecoP4",    brRecoP4,        "RecoP4[NPar][4]/D"); 
@@ -1275,16 +1291,19 @@ int main(int argc, char *argv[]){
   herr_phi_ecal=new TH1F("herr_phi_ecal","",100,-30,30);
   herr_theta_N=new TH1F("herr_theta_N","",100,-30,30);
   herr_phi_N=new TH1F("herr_phi_N","",100,-30,30);
-  herr_p_equa_N=new TH1F("herr_p_equa_N","",100,-50,50);
+  herr_E_equa_N=new TH2F("herr_E_equa_N","",100,-50,50, 5, 0,5);
+  herr_p_equa_N=new TH2F("herr_p_equa_N","",100,-50,50, 5, 0,5);
   herr_p_beta_N=new TH1F("herr_p_beta_N","",100,-50,50);
   herr_p_pi0=new TH1F("herr_p_pi0","",100,-50,50);
   herr_theta_pi0=new TH1F("herr_theta_pi0","",100,-50,50);
   herr_phi_pi0=new TH1F("herr_phi_pi0","",100,-50,50);
 
   ran=new TRandom3(0); // 0 will always give different result when you recreate it
+  //  ran->SetSeed(3722147861);
+  std::cout<<"seed:"<<ran->GetSeed()<<std::endl;
   dbpdg = new TDatabasePDG();
   gSystem->Load("libGeom");  
-
+  
 
   gFile=new TFile(argv[1]);
   geo = (TGeoManager*) gFile->Get("EDepSimGeometry");
@@ -1292,8 +1311,11 @@ int main(int argc, char *argv[]){
   gEDepSimTree->SetBranchAddress("Event",&event);    
   rootrackerTree=(TTree*) gFile->Get("DetSimPassThru/gRooTracker");
   brStdHepPdg    = rootrackerTree -> GetBranch ("StdHepPdg");
+  TBranch * brStdHepP4        = rootrackerTree -> GetBranch ("StdHepP4");
+  brEvtCode      = rootrackerTree -> GetBranch ("EvtCode");
   brStdHepPdg -> SetAddress (StdHepPdg);
-  
+  brEvtCode   -> SetAddress (&EvtCode);
+  brStdHepP4        -> SetAddress (  StdHepP4         );
 
   outTreeF->cd();
 
@@ -1301,16 +1323,36 @@ int main(int argc, char *argv[]){
   int rootrackerEntry=rootrackerTree->GetEntries();
   if(nEntry!=rootrackerEntry) {std::cout<<"----->----->not same entries"<<std::endl; return 1;}
   for(int i=0;i<nEntry;i++){
-    isnumuBar_Htarget=false;
-    if(i%100==0) std::cout<<"ientry:"<<i<<std::endl;
+    gEDepSimTree->GetEntry(i);
+    TLorentzVector vtx=event->Primaries.begin()->GetPosition();
+    if(!inFV(vtx.X(),vtx.Y(),vtx.Z())) continue;
+    isHtarget=false;
+    brIEntry=i;
     rootrackerTree->GetEntry(i);
-    if (StdHepPdg[0]==-14 && StdHepPdg[1]==2212) 
-      { isnumuBar_Htarget=true;} //  std::cout<<"^^^^^^^^^^^^^^^^^^^^^^isnumuBar_Htarget true"<<std::endl;}
-    smearEvent(i);
+    const char * code=EvtCode->String().Data();
+    if(std::strstr(code,"DIS"))
+      iChannel=2;
+    else if(std::strstr(code,"RES"))
+      iChannel=1;
+    else if(std::strstr(code,"QES"))
+      iChannel=0;
+    else if(std::strstr(code,"COH"))
+      iChannel=3;
+    else
+      { std::cout<<"--code --->"<<code<<std::endl;std::exit(EXIT_FAILURE);}
+
+    if(i%100==0) std::cout<<"ientry:"<<i<<std::endl;
+    
+    neutrinoPdg=StdHepPdg[0];
+    if (StdHepPdg[1]==2212)  isHtarget=true;
+    //    if(StdHepPdg[0]!=14 && StdHepPdg[0]!=-14 && StdHepPdg[1]==2212) std::cout<<" electron neutrino + htarget"<<" StdHepPdg[1]:"<<StdHepPdg[1]<<std::endl;
+    //    std::cout<<" ############################################################## new event ####################################  "<<i<<" StdHepPdg[1]:"<<StdHepPdg[1]<<std::endl;
+    //    std::cout<<"nupx:"<<StdHepP4[0][0]<<" nupy:"<<StdHepP4[0][1]<<" nupz:"<<StdHepP4[0][2]<<" nue:"<<StdHepP4[0][3]<<std::endl;
+    smearEvent();
     
   }    
   std::cout<<"close files"<<std::endl;
-
+  
   tree->Write();
   herr_dipAngle_stt->Write();
   herr_pt_stt->Write();
@@ -1320,6 +1362,7 @@ int main(int argc, char *argv[]){
   herr_phi_ecal->Write();
   herr_theta_N->Write();
   herr_phi_N->Write();
+  herr_E_equa_N->Write();
   herr_p_equa_N->Write();
   herr_p_beta_N->Write();
   herr_p_pi0->Write();
