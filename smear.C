@@ -41,6 +41,8 @@ double B=0.6;
 double x0=2.8; // m 
 TRandom3 *ran;
 TH2 *herr_dipAngle_stt;
+TH2 *herr_dipAng100_stt;
+TH2 *herr_thetaYZ100_stt;
 TH2 *herr_pt_stt;
 TH2 *herr_p_stt;
 TH1 *herr_E_ecal;
@@ -66,8 +68,7 @@ TDatabasePDG *dbpdg;
 
 TH2* hPi0_mom_recotrue;
 TH2* hPi0_ang_recotrue;
-TH1* hNeutron_ang_sigma_stt;
-TH1* hNeutron_ang_sigma_ecal;
+TH1* hNeutron_ang_reso;
 TH2* hNeutron_beta_recotrue_stt;
 TH2* hNeutron_beta_recotrue_ecal;
 //std::ofstream treefile;
@@ -697,6 +698,9 @@ bool smearChargedPar_stt(int trackid){
   herr_dipAngle_stt->Fill(dipAng_smear-dipAng, namecode);
   herr_pt_stt->Fill((Pt_smear-Pt)/Pt*100,namecode);
   herr_p_stt->Fill((P_smear-P)/P*100,namecode);
+  herr_dipAng100_stt->Fill((dipAng_smear-dipAng)/dipAng*100, namecode);
+  herr_thetaYZ100_stt->Fill((thetaYZ_smear-thetaYZ)/thetaYZ*100,namecode);
+  
   //  std::cout<<"stt smear succeed, L"<<L<<" nXhit:"<<nXhit<<" nYhit:"<<nYhit<<std::endl;
   fill1Par2tree(Px_smear*1000., Py_smear*1000., Pz_smear*1000., trackid, L*1000, nXhit, nYhit, "sttsmear  "); // always use MeV to fill
   
@@ -939,8 +943,8 @@ bool smearNeutron(int trackid){
 
   double Phi=event->Trajectories[trackid].InitialMomentum.Phi(); // -pi , pi
   double Theta=event->Trajectories[trackid].InitialMomentum.Theta(); // 0 - pi
-  double Phi_smear=isSTTdetectable?Phi*ran->Gaus(1,hNeutron_ang_sigma_stt->GetRandom()):Phi*ran->Gaus(1,hNeutron_ang_sigma_ecal->GetRandom());
-  double Theta_smear=isSTTdetectable?Theta*ran->Gaus(1,hNeutron_ang_sigma_stt->GetRandom()):Theta*ran->Gaus(1,hNeutron_ang_sigma_ecal->GetRandom());
+  double Phi_smear=Phi*(1+hNeutron_ang_reso->GetRandom());
+  double Theta_smear=Theta*(1+hNeutron_ang_reso->GetRandom());
 
   double P_smear;
   double P=event->Trajectories[trackid].InitialMomentum.P();
@@ -1241,21 +1245,21 @@ int main(int argc, char *argv[]){
   if(argc!=3) { std::cout<<"two arguments needed"<<std::endl;return 0;}
   //  outf=new TFile("outf.root","recreate");
   TFile *fpi0=new TFile("data/Histograms_1pi0_complete.root");
-  TFile *fneutron_ang=new TFile("data/plotres.root");
+  TFile *fneutron_ang=new TFile("data/Neutron_H_Angle_qeok_smearingok_All.root");
   TFile *fneutron_beta=new TFile("data/RecoVsTrue_Beta_RealCal_pdg2112_20190315_192325_ThrStt2.500000e-07.root");
   hPi0_mom_recotrue=(TH2*)fpi0->Get("h_mom_recotrue");
   hPi0_ang_recotrue=(TH2*)fpi0->Get("h_arctg_recotrue");
-  hNeutron_ang_sigma_stt=(TH1*)fneutron_ang->Get("STT Resolution");
-  hNeutron_ang_sigma_ecal=(TH1*)fneutron_ang->Get("Calorimeter Resolution");
+  TH2 *hNeutron_ang_reso_2D=(TH2*)fneutron_ang->Get("isto_res_stt");
+  hNeutron_ang_reso_2D->Add((TH2*)fneutron_ang->Get("isto_res_calbarrel"));
+  hNeutron_ang_reso=hNeutron_ang_reso_2D->ProjectionY("hNeutron_ang_reso",1,30);
   hNeutron_beta_recotrue_stt=(TH2*)fneutron_beta->Get("Beta STT");
   hNeutron_beta_recotrue_ecal=(TH2*)fneutron_beta->Get("Beta calorimeter");
 
+  hNeutron_ang_reso->Smooth();
   hPi0_mom_recotrue->Smooth();
   hPi0_mom_recotrue->Smooth();
   hPi0_ang_recotrue->Smooth();
   hPi0_ang_recotrue->Smooth();
-  hNeutron_ang_sigma_stt->Smooth();
-  hNeutron_ang_sigma_ecal->Smooth();
   hNeutron_beta_recotrue_stt->Smooth();
   hNeutron_beta_recotrue_ecal->Smooth();
   
@@ -1284,6 +1288,8 @@ int main(int argc, char *argv[]){
   tree->Branch("Info",    brInfo,        "Info[NPar][10]/C");
 
   herr_dipAngle_stt=new TH2F("herr_dipAngle_stt","",200,-0.05,0.05,10,0,10); // rad
+  herr_dipAng100_stt=new TH2F("herr_dipAng100_stt","",100,-30,30,10,0,10); // percent
+  herr_thetaYZ100_stt=new TH2F("herr_thetaYZ100_stt","",100,-30,30,10,0,10); // percent
   herr_pt_stt=new TH2F("herr_pt_stt","",100, -30,30,10,0,10); // percent
   herr_p_stt=new TH2F("herr_p_stt","",100, -30,30,10,0,10); //percent
   herr_E_ecal=new TH1F("herr_E_ecal","",100,-30,30); 
@@ -1315,7 +1321,7 @@ int main(int argc, char *argv[]){
   brEvtCode      = rootrackerTree -> GetBranch ("EvtCode");
   brStdHepPdg -> SetAddress (StdHepPdg);
   brEvtCode   -> SetAddress (&EvtCode);
-  brStdHepP4        -> SetAddress (  StdHepP4         );
+  brStdHepP4        -> SetAddress (  StdHepP4 );
 
   outTreeF->cd();
 
@@ -1355,6 +1361,8 @@ int main(int argc, char *argv[]){
   
   tree->Write();
   herr_dipAngle_stt->Write();
+  herr_dipAng100_stt->Write();
+  herr_thetaYZ100_stt->Write();
   herr_pt_stt->Write();
   herr_p_stt->Write();
   herr_E_ecal->Write();
