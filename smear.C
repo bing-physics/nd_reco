@@ -1347,8 +1347,6 @@ int main(int argc, char *argv[]){
       { std::cout<<"--code --->"<<code<<std::endl;std::exit(EXIT_FAILURE);}
 
     if(i%100==0) std::cout<<"ientry:"<<i<<std::endl;
-    if(std::strstr(code,"nu:-14"))
-
     if (StdHepPdg[1]==2212)  isHtarget=true;
     //    if(StdHepPdg[0]!=14 && StdHepPdg[0]!=-14 && StdHepPdg[1]==2212) std::cout<<" electron neutrino + htarget"<<" StdHepPdg[1]:"<<StdHepPdg[1]<<std::endl;
     //    std::cout<<" ############################################################## new event ####################################  "<<i<<" StdHepPdg[1]:"<<StdHepPdg[1]<<std::endl;
