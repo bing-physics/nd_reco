@@ -63,7 +63,7 @@ TTree * tree;
 
 bool isHtarget;
 int iChannel;
-int neutrinoPdg;
+
 TDatabasePDG *dbpdg;
 
 TH2* hPi0_mom_recotrue;
@@ -874,12 +874,12 @@ bool smearN_byEquation(double &psmear, int trackid){  // only for antinumu event
   const double mpr = dbpdg->GetParticle(2212)->Mass()*1000;
   //  const double mpip = 0.13957018;
   //  const double mpi0 = 0.1349766;
-  const double mmu = dbpdg->GetParticle(neutrinoPdg)->Mass()*1000; // actually it could be electron
+  assert(abs(brPdg[0])==13 || abs(brPdg[0])==11);  
+  const double mmu = dbpdg->GetParticle(brPdg[0])->Mass()*1000; // actually it could be electron
   const double mn = dbpdg->GetParticle(2112)->Mass()*1000;
   
 
   TLorentzVector p4hadreco(0,0,0,0);  
-  assert(abs(brPdg[0])==13 || abs(brPdg[0])==11);
   //  if(iChannel==0) std::cout<<"smearN_byEquation: brPdg[0]:"<<brPdg[0]<<" iFillPar:"<<iFillPar<<std::endl;
   //  if(iChannel==0) std::cout<<" px:"<<brRecoP4[0][0]<<" py:"<<brRecoP4[0][1]<<" pz:"<<brRecoP4[0][2]<<" E:"<<brRecoP4[0][3]<<std::endl;
   //  if(iChannel==0) std::cout<<" true px:"<<brTrueP4[0][0]<<" py:"<<brTrueP4[0][1]<<" pz:"<<brTrueP4[0][2]<<" E:"<<brTrueP4[0][3]<<std::endl;
@@ -901,8 +901,8 @@ bool smearN_byEquation(double &psmear, int trackid){  // only for antinumu event
   //  event->Trajectories[trackid].InitialMomentum.Print();
 
   psmear=sqrt(en*en-mn*mn);
-  if(abs(neutrinoPdg)==14)  herr_E_equa_N->Fill((en-E)/E*100, iChannel);
-  if(abs(neutrinoPdg)==14)  herr_p_equa_N->Fill((psmear-P)/P*100, iChannel);
+  if(abs(brPdg[0])==13)  herr_E_equa_N->Fill((en-E)/E*100, iChannel);
+  if(abs(brPdg[0])==13)  herr_p_equa_N->Fill((psmear-P)/P*100, iChannel);
   //  if(iChannel==0) std::cout<<"E:"<<E<<" en:"<<en<<" err:"<<(en-E)/E*100<<std::endl;
   //  if(iChannel==0) std::cout<<"P:"<<P<<" psme:"<<psmear<<" err:"<<(psmear-P)/P*100<<std::endl;
   return true;
@@ -950,7 +950,7 @@ bool smearNeutron(int trackid){
   double P=event->Trajectories[trackid].InitialMomentum.P();
   bool PequationSmearSucceed=false;
   if(isHtarget) PequationSmearSucceed=smearN_byEquation(P_smear, trackid);
-  //  if(PequationSmearSucceed && abs(neutrinoPdg)==14 )   herr_p_equa_N->Fill((P_smear-P)/P*100, iChannel);
+
   if(!PequationSmearSucceed || !isHtarget)  {
     double E=event->Trajectories[trackid].InitialMomentum.E();
     //    double m=event->Trajectories[trackid].InitialMomentum.Mag();
@@ -975,7 +975,6 @@ bool smearNeutron(int trackid){
   herr_theta_N->Fill((Theta_smear-Theta)/Theta*100);
   herr_phi_N->Fill((Phi_smear-Phi)/Phi*100);
   
-
   return true;
 }
 
@@ -1348,8 +1347,8 @@ int main(int argc, char *argv[]){
       { std::cout<<"--code --->"<<code<<std::endl;std::exit(EXIT_FAILURE);}
 
     if(i%100==0) std::cout<<"ientry:"<<i<<std::endl;
-    
-    neutrinoPdg=StdHepPdg[0];
+    if(std::strstr(code,"nu:-14"))
+
     if (StdHepPdg[1]==2212)  isHtarget=true;
     //    if(StdHepPdg[0]!=14 && StdHepPdg[0]!=-14 && StdHepPdg[1]==2212) std::cout<<" electron neutrino + htarget"<<" StdHepPdg[1]:"<<StdHepPdg[1]<<std::endl;
     //    std::cout<<" ############################################################## new event ####################################  "<<i<<" StdHepPdg[1]:"<<StdHepPdg[1]<<std::endl;
