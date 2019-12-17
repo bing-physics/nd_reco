@@ -892,6 +892,7 @@ void smearPi0(int trackid){
 
 bool smearN_byEquation(double &psmear, int trackid){  // only for antinumu events with 1 neutron produced 
   //  std::cout<<"--------------------------------------smear neutron by equation -----------------"<<std::endl;
+  assert(abs(brPdg[0])==13 || abs(brPdg[0])==11);
   const double mpr = dbpdg->GetParticle(2212)->Mass()*1000;
   const double mmu = dbpdg->GetParticle(brPdg[0])->Mass()*1000; // actually it could be electron
   const double mn = dbpdg->GetParticle(2112)->Mass()*1000;
