@@ -45,6 +45,7 @@ TH2 *herr_dipAng100_stt;
 TH2 *herr_thetaYZ100_stt;
 TH2 *herr_pt_stt;
 TH2 *herr_p_stt;
+TH2 *herr_theta_stt;
 TH1 *herr_E_ecal;
 TH1 *herr_theta_ecal;
 TH1 *herr_phi_ecal;
@@ -61,6 +62,8 @@ TFile *outf;
 TFile *outTreeF;
 TTree * tree;
 
+int iEntry;
+int targetpdg;
 bool isHtarget;
 int iChannel;
 
@@ -663,7 +666,7 @@ bool smearChargedPar_stt(int trackid){
   Lyz/=1000.; //mm-> m
   Lx/=1000.; //mm-> m
   Pt/=1000.;  // Mev-->GeV
-  Px/=1000.; 
+  Px/=1000.;
   P/=1000.;
   //  double dPt2Pt=sqrt(pow(sigmas*Pt/0.3/B/Lyz/Lyz*sqrt(720./(nYhit+4)),2)+pow(0.045/B/sqrt(Lyz*x0),2));
   double dPt2Pt=sqrt(pow(sigmas*Pt/0.3/B/L/L*sqrt(720./(nYhit+4)),2)+pow(0.045/B/sqrt(L*x0),2));
@@ -701,6 +704,24 @@ bool smearChargedPar_stt(int trackid){
   herr_dipAng100_stt->Fill((dipAng_smear-dipAng)/dipAng*100, namecode);
   herr_thetaYZ100_stt->Fill((thetaYZ_smear-thetaYZ)/thetaYZ*100,namecode);
   
+  //  double theta=initP.Theta();
+  // TVector3 P3smear(Px_smear,Py_smear,Pz_smear);
+  ///// constant smearing  2mrad for thetaX and thetaY, 5% for P
+  /*
+  if(false){
+    double thetaX=atan(initP.X()/initP.Z());
+    double thetaY=atan(initP.Y()/initP.Z());
+    double thetaX_smear=thetaX+ ran->Gaus(0,0.002);
+    double thetaY_smear=thetaY+ ran->Gaus(0,0.002);
+    double Psmear=initP.Mag()*ran->Gaus(1,0.05); //MeV
+    double mod=sqrt(pow(tan(thetaX_smear),2)+pow(tan(thetaY_smear),2)+1);
+    if(initP.Z()<0) mod*=-1;
+    Px_smear=tan(thetaX_smear)/mod*Psmear/1000.;
+    Py_smear=tan(thetaY_smear)/mod*Psmear/1000.;
+    Pz_smear=1/mod*Psmear/1000.;
+    herr_theta_stt->Fill(thetaX_smear-thetaX, namecode);
+  }
+  */
   //  std::cout<<"stt smear succeed, L"<<L<<" nXhit:"<<nXhit<<" nYhit:"<<nYhit<<std::endl;
   fill1Par2tree(Px_smear*1000., Py_smear*1000., Pz_smear*1000., trackid, L*1000, nXhit, nYhit, "sttsmear  "); // always use MeV to fill
   
@@ -870,41 +891,53 @@ void smearPi0(int trackid){
 }
 
 bool smearN_byEquation(double &psmear, int trackid){  // only for antinumu events with 1 neutron produced 
-  //  std::cout<<"--------------------------------------smear neutron by equation "<<neutrinoPdg<<std::endl;
+  //  std::cout<<"--------------------------------------smear neutron by equation -----------------"<<std::endl;
   const double mpr = dbpdg->GetParticle(2212)->Mass()*1000;
-  //  const double mpip = 0.13957018;
-  //  const double mpi0 = 0.1349766;
-  assert(abs(brPdg[0])==13 || abs(brPdg[0])==11);  
   const double mmu = dbpdg->GetParticle(brPdg[0])->Mass()*1000; // actually it could be electron
   const double mn = dbpdg->GetParticle(2112)->Mass()*1000;
-  
 
-  TLorentzVector p4hadreco(0,0,0,0);  
-  //  if(iChannel==0) std::cout<<"smearN_byEquation: brPdg[0]:"<<brPdg[0]<<" iFillPar:"<<iFillPar<<std::endl;
-  //  if(iChannel==0) std::cout<<" px:"<<brRecoP4[0][0]<<" py:"<<brRecoP4[0][1]<<" pz:"<<brRecoP4[0][2]<<" E:"<<brRecoP4[0][3]<<std::endl;
-  //  if(iChannel==0) std::cout<<" true px:"<<brTrueP4[0][0]<<" py:"<<brTrueP4[0][1]<<" pz:"<<brTrueP4[0][2]<<" E:"<<brTrueP4[0][3]<<std::endl;
-  //  if(abs(brPdg[0])!=13 && abs(brPdg[0])!=11) {std::cout<<"the first smeared track is not mu+, something must be wrong, check!!!!"<<std::endl; return false;}
+  TLorentzVector p4hadreco(0,0,0,0);
   TLorentzVector p4mureco(brRecoP4[0][0],brRecoP4[0][1],brRecoP4[0][2],brRecoP4[0][3]);
   for(int i=1;i<iFillPar;i++){
     //    if(iChannel==0) std::cout<<"i:"<<i<<" brPdg[i]:"<<brPdg[i]<<std::endl;
     p4hadreco+=TLorentzVector(brRecoP4[i][0],brRecoP4[i][1],brRecoP4[i][2],brRecoP4[i][3]);
   }
-  //  p4hadreco.Print();
+  p4mureco.RotateX(-0.101);
+  p4hadreco.RotateX(-0.101);
+
   double en = 0.5*( mmu*mmu + pow(p4hadreco.M(),2) + mpr*mpr - mn*mn - 2*mpr*(p4mureco.E() + p4hadreco.E()) +
   		    2*p4mureco*p4hadreco)/(p4mureco.E() + p4hadreco.E() - p4mureco.Pz() - p4hadreco.Pz() - mpr);
   en = en - p4mureco.E() - p4hadreco.E() + mpr;
-
-
+  
   if(en<mn) return false;
   double E=event->Trajectories[trackid].InitialMomentum.E();
   double P=event->Trajectories[trackid].InitialMomentum.P();
-  //  event->Trajectories[trackid].InitialMomentum.Print();
-
   psmear=sqrt(en*en-mn*mn);
   if(abs(brPdg[0])==13)  herr_E_equa_N->Fill((en-E)/E*100, iChannel);
   if(abs(brPdg[0])==13)  herr_p_equa_N->Fill((psmear-P)/P*100, iChannel);
-  //  if(iChannel==0) std::cout<<"E:"<<E<<" en:"<<en<<" err:"<<(en-E)/E*100<<std::endl;
-  //  if(iChannel==0) std::cout<<"P:"<<P<<" psme:"<<psmear<<" err:"<<(psmear-P)/P*100<<std::endl;
+
+    /*
+  if(iChannel==0) {
+  TLorentzVector p4nu(StdHepP4[0][0],StdHepP4[0][1],StdHepP4[0][2],StdHepP4[0][3]);
+  TLorentzVector p4n(event->Trajectories[1].InitialMomentum);
+    p4nu.RotateX(-0.101);
+    p4nu*=1000;
+    p4n.RotateX(-0.101);
+    std::cout<<"mpr:"<<mpr<<" mmu:"<<mmu<<" mn:"<<mn<<std::endl;
+    std::cout<<"targetpdg:"<<targetpdg<<" neutrinopdg:"<<StdHepPdg[0]<<" brPdg[0]:"<<brPdg[0]<<std::endl;
+    std::cout<<"nu px:"<<StdHepP4[0][0]*1000<<" py:"<<StdHepP4[0][1]*1000<<" pz:"<<StdHepP4[0][2]*1000<<" E:"<<StdHepP4[0][3]*1000<<std::endl;
+    std::cout<<" true mupx:"<<brTrueP4[0][0]<<" py:"<<brTrueP4[0][1]<<" pz:"<<brTrueP4[0][2]<<" E:"<<brTrueP4[0][3]<<std::endl;
+    std::cout<<" true neutron->: "; event->Trajectories[1].InitialMomentum.Print();
+    std::cout<<"after transform"<<std::endl;
+    std::cout<<"neutrino now:"; p4nu.Print();
+    std::cout<<"mu now:"; p4mureco.Print();
+    std::cout<<"neutron now:"; p4n.Print();
+    p4hadreco.Print();
+    std::cout<<"E:"<<E<<" en:"<<en<<" err:"<<(en-E)/E*100<<std::endl;
+    if((en-E)/E*100>1) std::cout<<"!!!!!!!!!!!!!!!!!!!!!!! too large check !!!!!!!!!! "<<iEntry<<std::endl;
+  }
+  */
+
   return true;
 }
 
@@ -1263,11 +1296,11 @@ int main(int argc, char *argv[]){
   hNeutron_beta_recotrue_ecal->Smooth();
   
   outTreeF=new TFile(argv[2],"recreate");
-  double      StdHepP4    [kNPmax][4];
-  
+
   TBranch * brEvtCode;
   TObjString* EvtCode = 0;
   TBranch * brStdHepPdg=0;
+  double  StdHepP4[100][4];
   int  StdHepPdg[100];
   TTree *rootrackerTree;
 
@@ -1289,6 +1322,7 @@ int main(int argc, char *argv[]){
   herr_dipAngle_stt=new TH2F("herr_dipAngle_stt","",200,-0.05,0.05,10,0,10); // rad
   herr_dipAng100_stt=new TH2F("herr_dipAng100_stt","",100,-30,30,10,0,10); // percent
   herr_thetaYZ100_stt=new TH2F("herr_thetaYZ100_stt","",100,-30,30,10,0,10); // percent
+  herr_theta_stt=new TH2F("herr_theta_stt","",200,-0.05,0.05,10,0,10);
   herr_pt_stt=new TH2F("herr_pt_stt","",100, -30,30,10,0,10); // percent
   herr_p_stt=new TH2F("herr_p_stt","",100, -30,30,10,0,10); //percent
   herr_E_ecal=new TH1F("herr_E_ecal","",100,-30,30); 
@@ -1328,6 +1362,7 @@ int main(int argc, char *argv[]){
   int rootrackerEntry=rootrackerTree->GetEntries();
   if(nEntry!=rootrackerEntry) {std::cout<<"----->----->not same entries"<<std::endl; return 1;}
   for(int i=0;i<nEntry;i++){
+    iEntry=i;
     gEDepSimTree->GetEntry(i);
     TLorentzVector vtx=event->Primaries.begin()->GetPosition();
     if(!inFV(vtx.X(),vtx.Y(),vtx.Z())) continue;
@@ -1346,6 +1381,7 @@ int main(int argc, char *argv[]){
     else
       { std::cout<<"--code --->"<<code<<std::endl;std::exit(EXIT_FAILURE);}
 
+    targetpdg=StdHepPdg[1];
     if(i%100==0) std::cout<<"ientry:"<<i<<std::endl;
     if (StdHepPdg[1]==2212)  isHtarget=true;
     //    if(StdHepPdg[0]!=14 && StdHepPdg[0]!=-14 && StdHepPdg[1]==2212) std::cout<<" electron neutrino + htarget"<<" StdHepPdg[1]:"<<StdHepPdg[1]<<std::endl;
@@ -1362,6 +1398,7 @@ int main(int argc, char *argv[]){
   herr_thetaYZ100_stt->Write();
   herr_pt_stt->Write();
   herr_p_stt->Write();
+  herr_theta_stt->Write();
   herr_E_ecal->Write();
   herr_theta_ecal->Write();
   herr_phi_ecal->Write();
