@@ -1278,16 +1278,21 @@ int main(int argc, char *argv[]){
   if(argc!=3) { std::cout<<"two arguments needed"<<std::endl;return 0;}
   //  outf=new TFile("outf.root","recreate");
   TFile *fpi0=new TFile("data/Histograms_1pi0_complete.root");
-  TFile *fneutron_ang=new TFile("data/Neutron_H_Angle_qeok_smearingok_All.root");
   TFile *fneutron_beta=new TFile("data/RecoVsTrue_Beta_RealCal_pdg2112_20190315_192325_ThrStt2.500000e-07.root");
   hPi0_mom_recotrue=(TH2*)fpi0->Get("h_mom_recotrue");
   hPi0_ang_recotrue=(TH2*)fpi0->Get("h_arctg_recotrue");
-  TH2 *hNeutron_ang_reso_2D=(TH2*)fneutron_ang->Get("isto_res_stt");
-  hNeutron_ang_reso_2D->Add((TH2*)fneutron_ang->Get("isto_res_calbarrel"));
-  hNeutron_ang_reso=hNeutron_ang_reso_2D->ProjectionY("hNeutron_ang_reso",1,30);
   hNeutron_beta_recotrue_stt=(TH2*)fneutron_beta->Get("Beta STT");
   hNeutron_beta_recotrue_ecal=(TH2*)fneutron_beta->Get("Beta calorimeter");
-
+  /*
+    TFile *fneutron_ang=new TFile("data/Neutron_H_Angle_qeok_smearingok_All.root");
+    TH2 *hNeutron_ang_reso_2D=(TH2*)fneutron_ang->Get("isto_res_stt");
+    hNeutron_ang_reso_2D->Add((TH2*)fneutron_ang->Get("isto_res_calbarrel"));
+    hNeutron_ang_reso=hNeutron_ang_reso_2D->ProjectionY("hNeutron_ang_reso",1,30);
+  */
+  TFile *fneutron_ang=new TFile("data/plotres.root");
+  hNeutron_ang_reso=(TH1*)fneutron_ang->Get("STT Resolution");
+  hNeutron_ang_reso->Add((TH1*)fneutron_ang->Get("Calorimeter Resolution"));
+  
   hNeutron_ang_reso->Smooth();
   hPi0_mom_recotrue->Smooth();
   hPi0_mom_recotrue->Smooth();
