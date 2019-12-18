@@ -424,7 +424,9 @@ void smearFirstHitPosition(int starthit, double sigmaX, double sigmaY, double *p
   double x = 0.5*(h.Start.X()+h.Stop.X());
   double y = 0.5*(h.Start.Y()+h.Stop.Y());
   double z = 0.5*(h.Start.Z()+h.Stop.Z());
-
+  pos_smear[0]=x;
+  pos_smear[1]=y;
+  pos_smear[2]=z;
   TGeoNode* node = geo->FindNode(x,y,z);
   double Pmaster[3]={x,y,z};
   double Plocal[3];
@@ -468,7 +470,7 @@ void smearFirstHitPosition(int starthit, double sigmaX, double sigmaY, double *p
     else if(Plocal_smear[1] <-ymax) Plocal_smear[1]=-ymax;
     geo->GetCurrentNavigator()->LocalToMaster(Plocal_smear, pos_smear);
   }
-
+  else { std::cout<<"this hit is neither in endcap or barrel of ecal, this must be very rare, simply return true "<<slabstr<<std::endl;}
   return;
   
 }
@@ -974,12 +976,7 @@ bool smearNeutron(int trackid){
     return false;
   }
   
-
-  double Phi=event->Trajectories[trackid].InitialMomentum.Phi(); // -pi , pi
-  double Theta=event->Trajectories[trackid].InitialMomentum.Theta(); // 0 - pi
-  double Phi_smear=Phi*(1+hNeutron_ang_reso->GetRandom());
-  double Theta_smear=Theta*(1+hNeutron_ang_reso->GetRandom());
-
+    
   double P_smear;
   double P=event->Trajectories[trackid].InitialMomentum.P();
   bool PequationSmearSucceed=false;
@@ -999,15 +996,35 @@ bool smearNeutron(int trackid){
     //    std::cout<<"beta:"<<beta<<" beta_smear:"<<beta_smear<<" P_smear:"<<P_smear<<std::endl;
 
   }
+  /*
+  double Phi=event->Trajectories[trackid].InitialMomentum.Phi(); // -pi , pi
+  double Theta=event->Trajectories[trackid].InitialMomentum.Theta(); // 0 - pi
+  double Phi_smear=Phi*(1+hNeutron_ang_reso->GetRandom());
+  double Theta_smear=Theta*(1+hNeutron_ang_reso->GetRandom());
   double Pz_smear=P_smear*cos(Theta_smear);
   double Px_smear=P_smear*sin(Theta_smear)*cos(Phi_smear);
   double Py_smear=P_smear*sin(Theta_smear)*sin(Phi_smear);
-
+  */
+  double thetaX=atan(event->Trajectories[trackid].InitialMomentum.X()/event->Trajectories[trackid].InitialMomentum.Z());
+  double thetaY=atan(event->Trajectories[trackid].InitialMomentum.Y()/event->Trajectories[trackid].InitialMomentum.Z());
+  double thetaX_smear=thetaX*(1+hNeutron_ang_reso->GetRandom()/sqrt(2.));
+  double thetaY_smear=thetaY*(1+hNeutron_ang_reso->GetRandom()/sqrt(2.));
+  if(thetaX_smear > TMath::Pi()/2) thetaX_smear = TMath::Pi() - thetaX_smear;
+  if(thetaX_smear < -TMath::Pi()/2) thetaX_smear = -TMath::Pi()- thetaX_smear;
+  if(thetaY_smear > TMath::Pi()/2) thetaY_smear = TMath::Pi() - thetaY_smear;
+  if(thetaY_smear < -TMath::Pi()/2) thetaY_smear = -TMath::Pi()- thetaY_smear;
+  double Pz_smear = P_smear/sqrt(1 + tan(thetaX_smear)*tan(thetaX_smear)+tan(thetaY_smear)*tan(thetaY_smear));
+  double Px_smear = Pz_smear*tan(thetaX_smear);
+  double Py_smear = Pz_smear*tan(thetaY_smear);
+  
   if(PequationSmearSucceed) fill1Par2tree(Px_smear, Py_smear, Pz_smear , trackid, -999, -999, -999, "NsmearEqua");
   else fill1Par2tree(Px_smear, Py_smear, Pz_smear , trackid, -999, -999, -999, "NsmearBeta");
 
-  herr_theta_N->Fill((Theta_smear-Theta)/Theta*100);
-  herr_phi_N->Fill((Phi_smear-Phi)/Phi*100);
+  double Theta=event->Trajectories[trackid].InitialMomentum.Theta();
+  double theta_Smear=atan(sqrt(Px_smear*Px_smear+Py_smear*Py_smear)/Pz_smear);
+  herr_theta_N->Fill((theta_Smear-Theta)/Theta);
+  
+  //  herr_phi_N->Fill((Phi_smear-Phi)/Phi*100);
   
   return true;
 }
@@ -1289,9 +1306,12 @@ int main(int argc, char *argv[]){
     hNeutron_ang_reso_2D->Add((TH2*)fneutron_ang->Get("isto_res_calbarrel"));
     hNeutron_ang_reso=hNeutron_ang_reso_2D->ProjectionY("hNeutron_ang_reso",1,30);
   */
+  //  TFile *fneutron_ang=new TFile("data/plotres.root");
+  //  hNeutron_ang_reso=(TH1*)fneutron_ang->Get("STT Resolution");
+  //  hNeutron_ang_reso->Add((TH1*)fneutron_ang->Get("Calorimeter Resolution"));
   TFile *fneutron_ang=new TFile("data/plotres.root");
-  hNeutron_ang_reso=(TH1*)fneutron_ang->Get("STT Resolution");
-  hNeutron_ang_reso->Add((TH1*)fneutron_ang->Get("Calorimeter Resolution"));
+  hNeutron_ang_reso=(TH1*)fneutron_ang->Get("hRes1DTot");
+  std::cout<<"hNeutron_ang_reso rms"<<hNeutron_ang_reso->GetRMS()<<std::endl;
   
   hNeutron_ang_reso->Smooth();
   hPi0_mom_recotrue->Smooth();
@@ -1306,8 +1326,8 @@ int main(int argc, char *argv[]){
   TBranch * brEvtCode;
   TObjString* EvtCode = 0;
   TBranch * brStdHepPdg=0;
-  double  StdHepP4[100][4];
-  int  StdHepPdg[100];
+  double  StdHepP4[kNPmax][4];
+  int  StdHepPdg[kNPmax];
   TTree *rootrackerTree;
 
   tree = new TTree("edep_smeared_tree"," reconstructed on edep sim");
