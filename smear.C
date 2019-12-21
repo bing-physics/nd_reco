@@ -4,8 +4,9 @@
 
 // k0->k0L, primary will break
 // k0L-> , primary not break
-// lamda -> , primary will break
+// lambda -> , primary will break ( only for gamma, for charged particle, their primary are still lambda)
 // eta--> will break
+// sigma0 --> will break
 
 // decay: pi+ -> mu+
 // decay: mu+ -> e+
@@ -546,7 +547,9 @@ bool smearPar_ecal(int trackid, int primaryId=-1){
   //  int nhit;  
   std::vector<int> allhits;
   std::map<int, double> cellId_Evis;
-  if(event->Trajectories[trackid].ParentId==-1 || event->Trajectories[event->Trajectories[trackid].ParentId].Name=="pi0" || event->Trajectories[event->Trajectories[trackid].ParentId].Name=="lambda"){
+  std::string parentName=event->Trajectories[trackid].ParentId==-1?"empty":event->Trajectories[event->Trajectories[trackid].ParentId].Name;
+  if(event->Trajectories[trackid].ParentId==-1 || parentName=="pi0" || parentName=="lambda" || parentName=="sigma0" || parentName=="anti_lambda"){
+    if(debug>=1) std::cout<<"didnot choose bruteforce since it is its own primaryId, trackid:"<<trackid<<" iEntry:"<<iEntry<<std::endl;
     if(ecalMap_prim2.find(trackid)==ecalMap_prim2.end()) return false;
     findEvis_forCell(ecalMap_prim2[trackid], cellId_Evis);
     starthit=ecalMap_prim2[trackid][0];
@@ -780,7 +783,7 @@ int findgammaPrimaryId(int trackid){
   if(parentId==-1) return trackid;
   if(event->Trajectories[parentId].Name=="gamma") return findgammaPrimaryId(parentId);
   if(event->Trajectories[parentId].Name=="pi0") return trackid;
-  if(event->Trajectories[parentId].Name=="lambda" || event->Trajectories[parentId].Name=="eta") return trackid;
+  if(event->Trajectories[parentId].Name=="lambda" || event->Trajectories[parentId].Name=="eta" || event->Trajectories[parentId].Name=="sigma0" || event->Trajectories[parentId].Name=="anti_lambda") return trackid;
   if(event->Trajectories[parentId].Name=="kaon0L" || event->Trajectories[parentId].Name=="kaon0S") return parentId;
   if(event->Trajectories[parentId].ParentId==-1) { std::cout<<" check this gamma parent(also top):"<<event->Trajectories[parentId].Name<<" gid:"<<trackid<<" iEntry:"<<iEntry<<std::endl;; return parentId;}
   int grandid=event->Trajectories[parentId].ParentId;
@@ -810,7 +813,7 @@ void smearGamma(int trackid){
   if(parentId!=-1 && grandId!=-1 && event->Trajectories[parentId].Name=="gamma"){
     if(event->Trajectories[grandId].Name=="gamma") { smearRemnantGamma(trackid); return;}
     if(event->Trajectories[grandId].Name=="pi0") { smearRemnantGamma(trackid, parentId); return;}
-    if(event->Trajectories[grandId].Name=="lambda") { smearRemnantGamma(trackid, parentId); return;}
+    if(event->Trajectories[grandId].Name==("lambda" || "anti_lambda")) { smearRemnantGamma(trackid, parentId); return;}
     if(event->Trajectories[grandId].Name=="kaon0L") { smearRemnantGamma(trackid, grandId); return;}
     if(event->Trajectories[grandId].Name=="kaon0S") { smearRemnantGamma(trackid, grandId); return;}
   }
