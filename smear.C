@@ -1408,7 +1408,7 @@ int main(int argc, char *argv[]){
   dbpdg = new TDatabasePDG();
   gSystem->Load("libGeom");  
   
-
+  std::cout<<"****************** input file:"<<argv[1]<<std::endl;
   gFile=new TFile(argv[1]);
   geo = (TGeoManager*) gFile->Get("EDepSimGeometry");
   gEDepSimTree = (TTree*) gFile->Get("EDepSimEvents");
