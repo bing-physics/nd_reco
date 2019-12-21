@@ -2,10 +2,17 @@
 //NOTE: better external pi0 stats, beta stats
 //NOTE: ecal energy smearing equation only works for em shower, but currently used for any particles failed STT smearing
 
+// k0->k0L, primary will break
+// k0L-> , primary not break
+// lamda -> , primary will break
+
+
 // decay: pi+ -> mu+
 // decay: mu+ -> e+
 // decay : kaon- -> e- + pi0
 // decay: pi- -> gamma + gamma (hadron inelastic)
+
+
 
 // TEST MACRO FOR USE WITH OLDER ROOT6.  DOESN"T WORK WHEN CLING KNOWS ABOUT
 // THE VARIOUS CLASSES.
@@ -23,6 +30,7 @@
 
 #include "TG4Event.h"
 
+#include <cstring>
 #include <fstream>
 #include <sstream>
 #include <utility>
@@ -98,6 +106,7 @@ int         brNXhit[kNPmax];
 int         brNYhit[kNPmax];
 char        brInfo[kNPmax][10];
 int iFillPar;
+void smearPi0(int trackid);
 void smearPar(int trackid, std::string name);
 void findEvis_forCell(int starthit, int nhit, std::map<int, double> &cellId_Evis);
 void findEvis_forCell(std::vector<int> allhits, std::map<int, double> &cellId_Evis);
@@ -525,7 +534,8 @@ bool smearPar_ecal(int trackid, int primaryId=-1){
     }
     bruteforceFindHit_ecal(trackid, primaryId,  allhits);
     //    std::cout<<"-------> after bruteforceFindHit"<<std::endl;
-    if(allhits.size()==0) { /* std::cout<<"ecal smear failed, due to zero ecal hit"<<std::endl;*/ return false;}
+    if(allhits.size()==0) {  return false;}
+
     findEvis_forCell(allhits, cellId_Evis);
     starthit=allhits[0]; 
   }
@@ -627,7 +637,7 @@ bool smearChargedPar_stt(int trackid){
     //    if(h.Contrib.size()>1) {  std::cout<<" contribution more than 2 tracks ihit:"<<ihit<<" nhit:"<<nhit<<" i:"<<i<<std::endl;  continue;}
     if(postPos.T()< prePos.T()) { // the time reversed hits are usually bad hits, break it
       //      if((i-ihit)*1.0<=0.5*nhit) std::cout<<"trackid:"<<trackid<<" time reverse, cut! ihit:"<<ihit<<" nhit+ihit:"<<nhit+ihit<<" i:"<<i<<std::endl;
-      assert((i-ihit)*1.0>0.5*nhit || nhit<9);
+      assert((i-ihit)*1.0>0.4*nhit || nhit<20);
       break;}
     if(h.EnergyDeposit<250E-6) continue;
     //    postPos= (h.Start+h.Stop)*0.5;
@@ -742,14 +752,27 @@ bool smearChargedPar(int trackid){
   return (sttSmear || ecalSmear);  
 }
 
+int findgammaPrimaryId(int trackid){
+  int parentId=event->Trajectories[trackid].ParentId;
+  if(parentId==-1) return trackid;
+  if(event->Trajectories[parentId].Name=="gamma") return findgammaPrimaryId(parentId);
+  if(event->Trajectories[parentId].Name=="pi0") return trackid;
+  if(event->Trajectories[parentId].Name=="lambda") return trackid;
+  if(event->Trajectories[parentId].Name=="kaon0L" || event->Trajectories[parentId].Name=="kaon0S") return parentId;
+  if(event->Trajectories[parentId].ParentId==-1) { std::cout<<" check this gamma parent(also top):"<<event->Trajectories[parentId].Name<<" gid:"<<trackid<<" iEntry:"<<iEntry<<std::endl;; return parentId;}
+  int grandid=event->Trajectories[parentId].ParentId;
+  if((event->Trajectories[parentId].Name=="e+" || event->Trajectories[parentId].Name=="e-") && event->Trajectories[grandid].Name=="gamma") return findgammaPrimaryId(grandid);
+  std::cout<<"parent:"<<event->Trajectories[parentId].Name<<" grand:"<<event->Trajectories[grandid].Name<<" this need to check trackid:"<<trackid<<" ientry:"<<iEntry<<std::endl;
+
+  return trackid;
+
+}
+
 void smearRemnantGamma(int trackid, int primaryId=-1){
   
-  if(primaryId==-1) {
-    int parentId=event->Trajectories[trackid].ParentId;
-    if(parentId==-1) primaryId=trackid;
-    else if(event->Trajectories[parentId].Name=="pi0") primaryId=trackid;
-    else {std::cout<<"remnant gamma parent becoming primaryId check:"<<event->Trajectories[parentId].Name<<std::endl; primaryId=parentId;}
-  }
+  if(primaryId==-1)
+    primaryId=findgammaPrimaryId(trackid);
+
   smearPar_ecal(trackid, primaryId); // this remnant gamma very very not possible to have any stt hits, so just do ecal smearing
 
 }
@@ -761,12 +784,14 @@ void smearGamma(int trackid){
   //  std::cout<<"start to smear gamma:"<<trackid<<std::endl;
   int parentId=event->Trajectories[trackid].ParentId;
   int grandId=(parentId==-1)?-1:event->Trajectories[parentId].ParentId;
-  int grand2Id=(grandId==-1)?-1:event->Trajectories[grandId].ParentId;
-  if(parentId!=-1 && grandId!=-1 && event->Trajectories[parentId].Name=="gamma" && event->Trajectories[grandId].Name=="gamma") { 
-    if(grand2Id==-1) {smearRemnantGamma(trackid, grandId); return;}
-    else { std::cout<<"need to check this!!!: "<<grand2Id<<" -> "<<grandId<<" -> "<<parentId<<" -> "<< trackid<<std::endl; smearRemnantGamma(trackid, grand2Id); return;}
+  if(parentId!=-1 && grandId!=-1 && event->Trajectories[parentId].Name=="gamma"){
+    if(event->Trajectories[grandId].Name=="gamma") { smearRemnantGamma(trackid); return;}
+    if(event->Trajectories[grandId].Name=="pi0") { smearRemnantGamma(trackid, parentId); return;}
+    if(event->Trajectories[grandId].Name=="lambda") { smearRemnantGamma(trackid, parentId); return;}
+    if(event->Trajectories[grandId].Name=="kaon0L") { smearRemnantGamma(trackid, grandId); return;}
+    if(event->Trajectories[grandId].Name=="kaon0S") { smearRemnantGamma(trackid, grandId); return;}
   }
-  if(parentId!=-1 && grandId!=-1 && event->Trajectories[parentId].Name=="gamma"&& event->Trajectories[grandId].Name=="pi0") { smearRemnantGamma(trackid, parentId); return;}
+
 
   Node *no=findNodeFast(trackid);
   no=no->FirstChild;
@@ -781,12 +806,21 @@ void smearGamma(int trackid){
 }
 
 void smearDaughters(int trackid){
+  //  std::cout<<"start to smearDaughters"<<std::endl;
   Node *no=findNodeFast(trackid);
   no=no->FirstChild;
   while(no){
-    //  std::cout<<"start to smear 1 gamma daughter: "<<no->Traj->TrackId<<"  "<<no->Traj->Name<<std::endl;
-    if(no->Traj->Name!="neutron")
-      smearChargedPar_stt(no->Traj->TrackId);  // for these daughters, should only do STT smear, if only ecal hits, even not possible to recognize them
+    if(no->Traj->PDGCode>999999) ; // if pdgcode is too large, it will make dbpdg->GetParticle()->Charge() bad!
+    else if(dbpdg->GetParticle(no->Traj->PDGCode)->Charge()!=0)
+      smearChargedPar_stt(no->Traj->TrackId); // // for these daughters, should only do STT smear, if only ecal hits, even not possible to recognize them
+    else if(no->Traj->Name=="neutron" || no->Traj->Name=="anti_neutron") ;
+    else if(no->Traj->Name=="gamma") smearGamma(no->Traj->TrackId);
+    else if(no->Traj->Name=="pi0") smearDaughters(no->Traj->TrackId); // don't  use smearPi0 here
+    else if(no->Traj->Name=="kaon0L" || no->Traj->Name=="kaon0S" || no->Traj->Name=="lambda" || no->Traj->Name=="eta") { smearDaughters(no->Traj->TrackId);} 
+    else { 
+      std::cout<<"a 0 charge daughter particle try to smear, will smear daughters!!  Name:"<<no->Traj->Name<<" id:"<<no->Traj->TrackId<<" parentID:"<<trackid<<" ientry"<<iEntry<<std::endl;
+      smearDaughters(no->Traj->TrackId);
+    }    
     no=no->RightSibling;
   }
 }
@@ -990,7 +1024,7 @@ bool smearNeutron(int trackid){
     double beta_smear=isSTTdetectable?hNeutron_beta_recotrue_stt->ProjectionY("",iTrueBetaBin,iTrueBetaBin)->GetRandom(): hNeutron_beta_recotrue_ecal->ProjectionY("",iTrueBetaBin,iTrueBetaBin)->GetRandom();
     //NOTE:  don't use this (when beta_smear>1, P_smear will become nan)  ----->  P_smear=m*beta_smear/sqrt(1-beta_smear*beta_smear);    
     P_smear=E*beta_smear;  // this sometimes will make P_smear > E true, but that's okay
-    if(beta_smear>1) std::cout<<" beta_smear>1"<<std::endl;
+    //    if(beta_smear>1) std::cout<<" beta_smear>1"<<std::endl;
     herr_p_beta_N->Fill((P_smear-P)/P*100);
 
     //    std::cout<<"beta:"<<beta<<" beta_smear:"<<beta_smear<<" P_smear:"<<P_smear<<std::endl;
@@ -1200,12 +1234,17 @@ void smearPar(int trackid, std::string name){
   else if(name=="gamma") smearGamma(trackid);  
   else if(name=="kaon0" || name=="anti_kaon0" || name=="kaon0L") smearDaughters(trackid);
   else if(name=="lambda" || name=="anti_lambda")  smearDaughters(trackid);   // lambda travel very short distance (5cm) then decay to pi- and proton
-  else if(name=="sigma+" || name=="sigma-") smearSTT_or_Daughters(trackid); // itself can create medium track then decay 
+  else if(name=="sigma+" || name=="sigma-") smearSTT_or_Daughters(trackid); // sigma+/- can create medium track then decay 
+  else if(name=="sigma0") smearDaughters(trackid);  // sigma0 decay right at vertex to 1 lambda and 1 gamma
+  else if(name=="eta") smearDaughters(trackid); //eta decay right there to 3 pi0s or other modes
   else if(name=="anti_proton") smearChargedPar(trackid);
-  else if(name=="nu_e"|| name=="anti_nu_e" || name=="anti_nu_mu" || name=="nu_mu" || name=="C12" || name=="Ar40" || name=="deuteron") return;
+  else if(name=="nu_e"|| name=="anti_nu_e" || name=="anti_nu_mu" || name=="nu_mu" || name=="C12" || name=="O16" || name=="Ar40" || name=="deuteron") return;
   else if(name=="anti_neutron") smearNeutron(trackid);
-  else std::exit(EXIT_FAILURE);
-
+  else {
+    std::cout<<"--->####################################### unknown par:"<<name<<"  iEntry:"<<iEntry<<" trackid:"<<trackid<<std::endl;
+    std::cout<<"--->####################################### unknown par:"<<name<<std::endl;
+    std::cout<<"--->####################################### unknown par:"<<name<<std::endl;
+  }
   //  else std::cout<<"--->unknown par:"<<name<<std::endl;
 }
 
@@ -1387,7 +1426,9 @@ int main(int argc, char *argv[]){
   int nEntry=gEDepSimTree->GetEntries();
   int rootrackerEntry=rootrackerTree->GetEntries();
   if(nEntry!=rootrackerEntry) {std::cout<<"----->----->not same entries"<<std::endl; return 1;}
+  std::cout<<"------------------------------------------------how many entries in this file:"<<nEntry<<std::endl;
   for(int i=0;i<nEntry;i++){
+    if(i%100==0) std::cout<<"=====> ientry:"<<i<<std::endl;
     iEntry=i;
     gEDepSimTree->GetEntry(i);
     TLorentzVector vtx=event->Primaries.begin()->GetPosition();
@@ -1408,10 +1449,9 @@ int main(int argc, char *argv[]){
       { std::cout<<"--code --->"<<code<<std::endl;std::exit(EXIT_FAILURE);}
 
     targetpdg=StdHepPdg[1];
-    if(i%100==0) std::cout<<"ientry:"<<i<<std::endl;
     if (StdHepPdg[1]==2212)  isHtarget=true;
     //    if(StdHepPdg[0]!=14 && StdHepPdg[0]!=-14 && StdHepPdg[1]==2212) std::cout<<" electron neutrino + htarget"<<" StdHepPdg[1]:"<<StdHepPdg[1]<<std::endl;
-    //    std::cout<<" ############################################################## new event ####################################  "<<i<<" StdHepPdg[1]:"<<StdHepPdg[1]<<std::endl;
+    //    std::cout<<" ############################################################## new event ####################################  "<<i<<std::endl;
     //    std::cout<<"nupx:"<<StdHepP4[0][0]<<" nupy:"<<StdHepP4[0][1]<<" nupz:"<<StdHepP4[0][2]<<" nue:"<<StdHepP4[0][3]<<std::endl;
     smearEvent();
     
