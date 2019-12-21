@@ -5,7 +5,7 @@
 // k0->k0L, primary will break
 // k0L-> , primary not break
 // lamda -> , primary will break
-
+// eta--> will break
 
 // decay: pi+ -> mu+
 // decay: mu+ -> e+
@@ -74,7 +74,7 @@ int iEntry;
 int targetpdg;
 bool isHtarget;
 int iChannel;
-
+int debug;
 TDatabasePDG *dbpdg;
 
 TH2* hPi0_mom_recotrue;
@@ -106,6 +106,7 @@ int         brNXhit[kNPmax];
 int         brNYhit[kNPmax];
 char        brInfo[kNPmax][10];
 int iFillPar;
+int findgammaPrimaryId(int trackid);
 void smearPi0(int trackid);
 void smearPar(int trackid, std::string name);
 void findEvis_forCell(int starthit, int nhit, std::map<int, double> &cellId_Evis);
@@ -225,7 +226,7 @@ void fill1Par2tree(double recoPx, double recoPy, double recoPz, int trackid, dou
   brTopParentId[iFillPar]= findTopParent(trackid);
   strcpy(brInfo[iFillPar], info);
   iFillPar++;
-
+  if(debug>2) std::cout<<"fill 1 par pdg:"<<pdg<<std::endl;
 }
 
 
@@ -494,45 +495,67 @@ bool isthisParent(int lowId, int highId){
   return false;
 }
 
-void bruteforceFindHit_ecal(int trackid, int primid, std::vector<int> &allhits){
+void bruteforceFindHit_ecal(int trackid, int primid, std::vector<int> &allhits, bool havechild=true){
   allhits.clear();
   assert(primid!=-1);
   assert(trackid!=primid);
   std::vector<int> hitchains=ecalMap_prim2[primid];
-  for(unsigned int i=0;i<hitchains.size()/2;i++){
-    for(int j = hitchains[2*i]; j <= hitchains[2*i+1]; j++){
-      if( !isthisParent(event->SegmentDetectors["ECAL"].at(j).Contrib[0], trackid)) { continue;}
-      //      std::cout<<"j:"<<j<<" check1pass"<<std::endl;
-      if(allhits.size()==0) {allhits.push_back(j);allhits.push_back(j);}
-      if(i-allhits.back()==1) allhits.back()=j;
-      else
-	{allhits.push_back(j);allhits.push_back(j);}	
+  if(havechild){
+    for(unsigned int i=0;i<hitchains.size()/2;i++){
+      for(int j = hitchains[2*i]; j <= hitchains[2*i+1]; j++){
+	if( !isthisParent(event->SegmentDetectors["ECAL"].at(j).Contrib[0], trackid)) { continue;}
+	//      std::cout<<"j:"<<j<<" check1pass"<<std::endl;
+	if(allhits.size()==0) {allhits.push_back(j);allhits.push_back(j);}
+	else if(j-allhits.back()==1) allhits.back()=j;
+	else
+	  {allhits.push_back(j);allhits.push_back(j);}	
+      }
     }
   }
+  else{
+    for(unsigned int i=0;i<hitchains.size()/2;i++){
+      for(int j = hitchains[2*i]; j <= hitchains[2*i+1]; j++){
+	if(event->SegmentDetectors["ECAL"].at(j).Contrib[0]!=trackid) { continue;}
+	//      std::cout<<"j:"<<j<<" check1pass"<<std::endl;
+        if(allhits.size()==0) {allhits.push_back(j);allhits.push_back(j);}
+        else if(j-allhits.back()==1) allhits.back()=j;
+        else
+          {allhits.push_back(j);allhits.push_back(j);}
+      }
+    }
+  }
+  /*
+  std::cout<<"bruteforce allhits pairs: ";
+  for(auto a: allhits){
+    std::cout<<" "<<a;
+  }
+  std::cout<<std::endl;
+  */
+}
+int findPrimaryId(int trackid){
+  
+  int parentId=event->Trajectories[trackid].ParentId;
+  if(event->Trajectories[parentId].Name=="gamma") return findgammaPrimaryId(parentId);
+  else { std::cout<<"findPrimaryId check!!!!, trackid:"<<trackid<<" parent:"<<event->Trajectories[parentId].Name<<" iEntry:"<<iEntry<<std::endl; return parentId;}
 }
 
 bool smearPar_ecal(int trackid, int primaryId=-1){
-  //  std::cout<<"start ecal smear"<<std::endl;
+  if(debug>=2) std::cout<<"start ecal smear for trackid:"<<trackid<<std::endl;
   //  5.7%/sqrt(E)  (GeV)
   int starthit;
   //  int nhit;  
   std::vector<int> allhits;
   std::map<int, double> cellId_Evis;
-  if(event->Trajectories[trackid].ParentId==-1 || event->Trajectories[event->Trajectories[trackid].ParentId].Name=="pi0"){
+  if(event->Trajectories[trackid].ParentId==-1 || event->Trajectories[event->Trajectories[trackid].ParentId].Name=="pi0" || event->Trajectories[event->Trajectories[trackid].ParentId].Name=="lambda"){
     if(ecalMap_prim2.find(trackid)==ecalMap_prim2.end()) return false;
     findEvis_forCell(ecalMap_prim2[trackid], cellId_Evis);
     starthit=ecalMap_prim2[trackid][0];
   }
   else {
-    //    std::cout<<"-------> start bruteforceFindHit"<<std::endl;
-    if(primaryId==-1) {
-      int parentId=event->Trajectories[trackid].ParentId;
-      int grandId=(parentId==-1)?-1:event->Trajectories[parentId].ParentId;
-      assert(event->Trajectories[parentId].Name=="gamma");
-      if(grandId==-1 || event->Trajectories[grandId].Name=="pi0") primaryId=parentId;
-      else { assert(event->Trajectories[grandId].Name=="gamma"); primaryId=grandId;}
-    }
-    bruteforceFindHit_ecal(trackid, primaryId,  allhits);
+    
+    if(primaryId==-1) { primaryId= findPrimaryId(trackid); if(debug>=1) std::cout<<"@@@@ lookforprim ";}
+    if(debug>=1) std::cout<<"---> start bruteforceFindHit for trackid: "<<trackid<<" "<<event->Trajectories[trackid].Name<<" havechild:"<<(findNodeFast(trackid)->FirstChild!=0)<<" prim:"<<primaryId<<std::endl;
+    bruteforceFindHit_ecal(trackid, primaryId,  allhits, findNodeFast(trackid)->FirstChild!=0);
     //    std::cout<<"-------> after bruteforceFindHit"<<std::endl;
     if(allhits.size()==0) {  return false;}
 
@@ -637,7 +660,7 @@ bool smearChargedPar_stt(int trackid){
     //    if(h.Contrib.size()>1) {  std::cout<<" contribution more than 2 tracks ihit:"<<ihit<<" nhit:"<<nhit<<" i:"<<i<<std::endl;  continue;}
     if(postPos.T()< prePos.T()) { // the time reversed hits are usually bad hits, break it
       //      if((i-ihit)*1.0<=0.5*nhit) std::cout<<"trackid:"<<trackid<<" time reverse, cut! ihit:"<<ihit<<" nhit+ihit:"<<nhit+ihit<<" i:"<<i<<std::endl;
-      assert((i-ihit)*1.0>0.4*nhit || nhit<20);
+      if((i-ihit)*1.0<0.5*nhit && nhit>15) std::cout<<"thistrack has >15hits but break befor half,mayneed lookinto!!!nhit: "<<nhit<<" i-ihit:"<<i-ihit<<" trackid:"<<trackid<<" iEntry:"<<iEntry<<std::endl;
       break;}
     if(h.EnergyDeposit<250E-6) continue;
     //    postPos= (h.Start+h.Stop)*0.5;
@@ -757,7 +780,7 @@ int findgammaPrimaryId(int trackid){
   if(parentId==-1) return trackid;
   if(event->Trajectories[parentId].Name=="gamma") return findgammaPrimaryId(parentId);
   if(event->Trajectories[parentId].Name=="pi0") return trackid;
-  if(event->Trajectories[parentId].Name=="lambda") return trackid;
+  if(event->Trajectories[parentId].Name=="lambda" || event->Trajectories[parentId].Name=="eta") return trackid;
   if(event->Trajectories[parentId].Name=="kaon0L" || event->Trajectories[parentId].Name=="kaon0S") return parentId;
   if(event->Trajectories[parentId].ParentId==-1) { std::cout<<" check this gamma parent(also top):"<<event->Trajectories[parentId].Name<<" gid:"<<trackid<<" iEntry:"<<iEntry<<std::endl;; return parentId;}
   int grandid=event->Trajectories[parentId].ParentId;
@@ -927,8 +950,10 @@ void smearPi0(int trackid){
 }
 
 bool smearN_byEquation(double &psmear, int trackid){  // only for antinumu events with 1 neutron produced 
-  //  std::cout<<"--------------------------------------smear neutron by equation -----------------"<<std::endl;
-  assert(abs(brPdg[0])==13 || abs(brPdg[0])==11);
+  if(debug>=2) std::cout<<"--------------------------------------smear neutron by equation -----------------"<<std::endl;
+  if(iFillPar<1) return false;
+  if(abs(brPdg[0])!=13 && abs(brPdg[0])!=11)  std::exit(EXIT_FAILURE);
+  
   const double mpr = dbpdg->GetParticle(2212)->Mass()*1000;
   const double mmu = dbpdg->GetParticle(brPdg[0])->Mass()*1000; // actually it could be electron
   const double mn = dbpdg->GetParticle(2112)->Mass()*1000;
@@ -945,14 +970,14 @@ bool smearN_byEquation(double &psmear, int trackid){  // only for antinumu event
   double en = 0.5*( mmu*mmu + pow(p4hadreco.M(),2) + mpr*mpr - mn*mn - 2*mpr*(p4mureco.E() + p4hadreco.E()) +
   		    2*p4mureco*p4hadreco)/(p4mureco.E() + p4hadreco.E() - p4mureco.Pz() - p4hadreco.Pz() - mpr);
   en = en - p4mureco.E() - p4hadreco.E() + mpr;
-  
+
   if(en<mn) return false;
   double E=event->Trajectories[trackid].InitialMomentum.E();
   double P=event->Trajectories[trackid].InitialMomentum.P();
   psmear=sqrt(en*en-mn*mn);
   if(abs(brPdg[0])==13)  herr_E_equa_N->Fill((en-E)/E*100, iChannel);
   if(abs(brPdg[0])==13)  herr_p_equa_N->Fill((psmear-P)/P*100, iChannel);
-
+  
     /*
   if(iChannel==0) {
   TLorentzVector p4nu(StdHepP4[0][0],StdHepP4[0][1],StdHepP4[0][2],StdHepP4[0][3]);
@@ -985,6 +1010,7 @@ bool smearNeutron(int trackid){
   }
   bool isSTTdetectable=false;
   bool isECALdetectable=false;
+
   if(sttMap_prim2.find(trackid)!=sttMap_prim2.end()){
     const std::vector<int> &vec= sttMap_prim2[trackid];
     for(unsigned int i=0;i<vec.size()/2;i++){
@@ -1004,7 +1030,6 @@ bool smearNeutron(int trackid){
       }      
     }
   }
-
   if( !isSTTdetectable && !isECALdetectable) {
     //    std::cout<<"smear neutron fail due to no detectable stt hit and ecal hit"<<std::endl;
     return false;
@@ -1028,7 +1053,6 @@ bool smearNeutron(int trackid){
     herr_p_beta_N->Fill((P_smear-P)/P*100);
 
     //    std::cout<<"beta:"<<beta<<" beta_smear:"<<beta_smear<<" P_smear:"<<P_smear<<std::endl;
-
   }
   /*
   double Phi=event->Trajectories[trackid].InitialMomentum.Phi(); // -pi , pi
@@ -1266,13 +1290,13 @@ void smearEvent(){
   cleanBranch();
   //  treefile.open(Form("treemap%d.txt",i));
   //  std::cout<<" ############################################################## new event ####################################  "<<i<<std::endl;
-  //  showAll();
+  if(debug>=3)  showAll();
   organizeHits();
   //  organizeHits_prim();
   organizeHits_prim2();
   //  showHitMap();
   makeTree();
-  //  dumpTree();
+  if(debug>=2) drawTree();
   //  treefile.close();
   iFillPar=0;
   int nPrim= event->Primaries.begin()->Particles.size();
@@ -1283,15 +1307,15 @@ void smearEvent(){
   if(isHtarget && havePrimNeutron && (!NeutronAtLast)) {
     for (int i=0;i<nPrim;i++){      
       if(event->Primaries.begin()->Particles[i].TrackId==neutron_trackid) continue;
-      //      std::cout<<" ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++smearPar: "<<event->Primaries.begin()->Particles[i].Name<<" id: "<<event->Primaries.begin()->Particles[i].TrackId<<std::endl;
+      if(debug>=2) std::cout<<" +++++++++++++++++++++++++++++++++++++++++++++++++++++smearPar: "<<event->Primaries.begin()->Particles[i].Name<<" id: "<<event->Primaries.begin()->Particles[i].TrackId<<std::endl;
       smearPar(event->Primaries.begin()->Particles[i].TrackId , event->Primaries.begin()->Particles[i].Name);
     }
-    //    std::cout<<"smear neutron at the very end since its a numubar hydrogen target event"<<std::endl;
+    if(debug>=2)   std::cout<<"smear neutron at the very end since its a numubar hydrogen target event"<<std::endl;
     smearNeutron(neutron_trackid);
   }
   else {
     for (int i=0;i<nPrim;i++){
-      //      std::cout<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++smearPar: "<<event->Primaries.begin()->Particles[i].Name<<" id: "<<event->Primaries.begin()->Particles[i].TrackId<<std::endl;
+      if(debug>=2) std::cout<<"++++++++++++++++++++++++++++++++++++++++++++++++++smearPar: "<<event->Primaries.begin()->Particles[i].Name<<" id: "<<event->Primaries.begin()->Particles[i].TrackId<<std::endl;
       smearPar(event->Primaries.begin()->Particles[i].TrackId , event->Primaries.begin()->Particles[i].Name);
     }
   }
@@ -1331,7 +1355,19 @@ std::vector<std::string> makefilelist(std::string st,int Nfilelist=0){
 
 
 int main(int argc, char *argv[]){
-  if(argc!=3) { std::cout<<"two arguments needed"<<std::endl;return 0;}
+  if(argc<3) { std::cout<<"two arguments needed"<<std::endl;return 0;}
+  debug=-1;
+  int testStartEntry=-1;
+  int testNEntry=-1;
+  if(argc>=4){
+    if(std::strcmp(argv[3],"debug1")==0) debug=1;
+    else if(std::strcmp(argv[3],"debug2")==0) debug=2;
+    else if(std::strcmp(argv[3],"debug3")==0) debug=3;
+  }
+  if(argc>=5) { testStartEntry=std::atoi(argv[4]);}
+  if(argc==6) { testNEntry=std::atoi(argv[5]);}
+  std::cout<<" %%%%%%%%%%%%%%%%%%%%%%%% debug level ########################   :  "<<debug<<std::endl;
+
   //  outf=new TFile("outf.root","recreate");
   TFile *fpi0=new TFile("data/Histograms_1pi0_complete.root");
   TFile *fneutron_beta=new TFile("data/RecoVsTrue_Beta_RealCal_pdg2112_20190315_192325_ThrStt2.500000e-07.root");
@@ -1427,8 +1463,11 @@ int main(int argc, char *argv[]){
   int rootrackerEntry=rootrackerTree->GetEntries();
   if(nEntry!=rootrackerEntry) {std::cout<<"----->----->not same entries"<<std::endl; return 1;}
   std::cout<<"------------------------------------------------how many entries in this file:"<<nEntry<<std::endl;
-  for(int i=0;i<nEntry;i++){
+  int startEntry=(testStartEntry!=-1)?testStartEntry:0;
+  int endplusEntry=(testNEntry!=-1)?(startEntry+testNEntry):nEntry;
+  for(int i=startEntry;i<endplusEntry;i++){
     if(i%100==0) std::cout<<"=====> ientry:"<<i<<std::endl;
+    if(debug>=1) std::cout<<" ############################################################## new event ####################################  "<<i<<std::endl;
     iEntry=i;
     gEDepSimTree->GetEntry(i);
     TLorentzVector vtx=event->Primaries.begin()->GetPosition();
@@ -1451,7 +1490,6 @@ int main(int argc, char *argv[]){
     targetpdg=StdHepPdg[1];
     if (StdHepPdg[1]==2212)  isHtarget=true;
     //    if(StdHepPdg[0]!=14 && StdHepPdg[0]!=-14 && StdHepPdg[1]==2212) std::cout<<" electron neutrino + htarget"<<" StdHepPdg[1]:"<<StdHepPdg[1]<<std::endl;
-    //    std::cout<<" ############################################################## new event ####################################  "<<i<<std::endl;
     //    std::cout<<"nupx:"<<StdHepP4[0][0]<<" nupy:"<<StdHepP4[0][1]<<" nupz:"<<StdHepP4[0][2]<<" nue:"<<StdHepP4[0][3]<<std::endl;
     smearEvent();
     
