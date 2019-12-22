@@ -548,7 +548,7 @@ bool smearPar_ecal(int trackid, int primaryId=-1){
   std::vector<int> allhits;
   std::map<int, double> cellId_Evis;
   std::string parentName=event->Trajectories[trackid].ParentId==-1?"empty":event->Trajectories[event->Trajectories[trackid].ParentId].Name;
-  if(event->Trajectories[trackid].ParentId==-1 || parentName=="pi0" || parentName=="lambda" || parentName=="sigma0" || parentName=="anti_lambda"){
+  if(event->Trajectories[trackid].ParentId==-1 || primaryId==trackid ||  parentName=="pi0"){
     if(debug>=1) std::cout<<"didnot choose bruteforce since it is its own primaryId, trackid:"<<trackid<<" iEntry:"<<iEntry<<std::endl;
     if(ecalMap_prim2.find(trackid)==ecalMap_prim2.end()) return false;
     findEvis_forCell(ecalMap_prim2[trackid], cellId_Evis);
@@ -955,7 +955,7 @@ void smearPi0(int trackid){
 bool smearN_byEquation(double &psmear, int trackid){  // only for antinumu events with 1 neutron produced 
   if(debug>=2) std::cout<<"--------------------------------------smear neutron by equation -----------------"<<std::endl;
   if(iFillPar<1) return false;
-  if(abs(brPdg[0])!=13 && abs(brPdg[0])!=11)  std::exit(EXIT_FAILURE);
+  if(abs(brPdg[0])!=13 && abs(brPdg[0])!=11)  {std::cout<<"^^^^^^^^^^^^^ fail neutron smearing by equation since no lepton reconstructed, iEntry: "<<iEntry<<std::endl; return false;}
   
   const double mpr = dbpdg->GetParticle(2212)->Mass()*1000;
   const double mmu = dbpdg->GetParticle(brPdg[0])->Mass()*1000; // actually it could be electron
