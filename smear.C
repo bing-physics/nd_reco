@@ -7,6 +7,7 @@
 // lambda -> , primary will break ( only for gamma, for charged particle, their primary are still lambda)
 // eta--> will break
 // sigma0 --> will break
+// sigma- --> will break for gamma, for neutron not break
 
 // decay: pi+ -> mu+
 // decay: mu+ -> e+
@@ -783,7 +784,7 @@ int findgammaPrimaryId(int trackid){
   if(parentId==-1) return trackid;
   if(event->Trajectories[parentId].Name=="gamma") return findgammaPrimaryId(parentId);
   if(event->Trajectories[parentId].Name=="pi0") return trackid;
-  if(event->Trajectories[parentId].Name=="lambda" || event->Trajectories[parentId].Name=="eta" || event->Trajectories[parentId].Name=="sigma0" || event->Trajectories[parentId].Name=="anti_lambda") return trackid;
+  if(event->Trajectories[parentId].Name=="lambda" || event->Trajectories[parentId].Name=="eta" || event->Trajectories[parentId].Name=="sigma0" || event->Trajectories[parentId].Name=="anti_lambda" || event->Trajectories[parentId].Name=="sigma-" ) return trackid;
   if(event->Trajectories[parentId].Name=="kaon0L" || event->Trajectories[parentId].Name=="kaon0S") return parentId;
   if(event->Trajectories[parentId].ParentId==-1) { std::cout<<" check this gamma parent(also top):"<<event->Trajectories[parentId].Name<<" gid:"<<trackid<<" iEntry:"<<iEntry<<std::endl;; return parentId;}
   int grandid=event->Trajectories[parentId].ParentId;
