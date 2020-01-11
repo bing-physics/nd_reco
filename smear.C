@@ -68,6 +68,11 @@ TH1 *herr_p_pi0;
 TH1 *herr_theta_pi0;
 TH1 *herr_phi_pi0;
 
+TH1 *herr_nu_E;
+double recoNuPx;
+double recoNuPy;
+double recoNuPz;
+double trueNuE;
 TFile *outf;
 TFile *outTreeF;
 TTree * tree;
@@ -127,6 +132,9 @@ bool inFV(double x, double y, double z){
 
 
 void cleanBranch(){
+  recoNuPx=0;
+  recoNuPy=0;
+  recoNuPz=0;
   brNPar=0;
   for(int i=0;i<kNPmax;i++){
     brRecoP4[i][0]=-999;
@@ -229,6 +237,11 @@ void fill1Par2tree(double recoPx, double recoPy, double recoPz, int trackid, dou
   strcpy(brInfo[iFillPar], info);
   iFillPar++;
   if(debug>2) std::cout<<"fill 1 par pdg:"<<pdg<<std::endl;
+
+  recoNuPx+=recoPx;
+  recoNuPy+=recoPy;
+  recoNuPz+=recoPz;
+
 }
 
 
@@ -1326,9 +1339,12 @@ void smearEvent(){
   //  std::cout<<"iFillPar:"<<iFillPar<<std::endl;
   if(iFillPar==0) return;
   brNPar=iFillPar;
-  brNPrim=nPrim;
+  brNPrim=nPrim; 
   tree->Fill();
 
+  double recoNuE=sqrt(recoNuPx*recoNuPx+recoNuPy*recoNuPy+recoNuPz*recoNuPz);
+  herr_nu_E->Fill((recoNuE-trueNuE)/trueNuE*100.);
+  //  std::cout<<"recoNuE:"<<recoNuE<<" trueNuE:"<<trueNuE<<std::endl;
 }
 
 std::vector<std::string> makefilelist(std::string st,int Nfilelist=0){
@@ -1441,6 +1457,7 @@ int main(int argc, char *argv[]){
   herr_p_pi0=new TH1F("herr_p_pi0","",100,-50,50);
   herr_theta_pi0=new TH1F("herr_theta_pi0","",100,-50,50);
   herr_phi_pi0=new TH1F("herr_phi_pi0","",100,-50,50);
+  herr_nu_E=new TH1F("herr_nu_E","",100,-30,30);
 
   ran=new TRandom3(0); // 0 will always give different result when you recreate it
   //  ran->SetSeed(3722147861);
@@ -1492,6 +1509,7 @@ int main(int argc, char *argv[]){
       { std::cout<<"--code --->"<<code<<std::endl;std::exit(EXIT_FAILURE);}
 
     targetpdg=StdHepPdg[1];
+    trueNuE = StdHepP4[0][3]*1000.;
     if (StdHepPdg[1]==2212)  isHtarget=true;
     //    if(StdHepPdg[0]!=14 && StdHepPdg[0]!=-14 && StdHepPdg[1]==2212) std::cout<<" electron neutrino + htarget"<<" StdHepPdg[1]:"<<StdHepPdg[1]<<std::endl;
     //    std::cout<<"nupx:"<<StdHepP4[0][0]<<" nupy:"<<StdHepP4[0][1]<<" nupz:"<<StdHepP4[0][2]<<" nue:"<<StdHepP4[0][3]<<std::endl;
@@ -1518,7 +1536,20 @@ int main(int argc, char *argv[]){
   herr_p_pi0->Write();
   herr_theta_pi0->Write();
   herr_phi_pi0->Write();
+  herr_nu_E->Write();
   //  outTreeF->Write();
   outTreeF->Close();
 
 }
+/*
+ --------------------------------------------------------------------------------------------------------------------------
+ | Idx | Ist |    PDG     | Rescat |   Mother  |  Daughter |   Px   |   Py   |   Pz   |   E    |   x    |   y    |    z   |
+ |     |     |            |        |           |           |(GeV/c) |(GeV/c) |(GeV/c) | (GeV)  |  (fm)  |  (fm)  |   (fm) |
+
+ |   0 |   0 |        -14 | -280947920 |  -1 |  -1 |   4 |   4 |  0.003 | -0.289 |  2.791 |  2.806 |  1.184 |  1.936 |  1.051 |
+ |   1 |   0 | 1000060120 |  32766 |  -1 |  -1 |   2 |   3 |  0.000 |  0.000 |  0.000 | 11.175 |  0.000 |  0.000 |  0.000 |
+ |   2 |  11 |       2212 | -649084800 |   1 |  -1 |   5 |   5 |  0.113 | -0.021 | -0.154 |  0.921 |  1.184 |  1.936 |  1.051 |
+ |   3 |   2 | 1000050110 |  32666 |   1 |  -1 |  16 |  16 | -0.113 |  0.021 |  0.154 | 10.254 |  0.000 |  0.000 |  0.000 |
+ |   4 |   1 |        -13 |      4 |   0 |  -1 |  -1 |  -1 | -0.089 | -0.177 |  0.000 |  0.225 |  1.184 |  1.936 |  1.051 |
+
+*/
