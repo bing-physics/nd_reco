@@ -434,7 +434,8 @@ void findEvis_forCell(std::vector<int> hitchains, std::map<int, double> &cellId_
     else { continue;}
     id = cellID + 100 * planeID + 1000 * modID;
     //    std::cout<<"cellID:"<<cellID<<" planeID:"<<planeID<<" modID:"<<modID<<std::endl;
-    cellId_Evis[id]= h.EnergyDeposit;
+    if(cellId_Evis.find(id)!=cellId_Evis.end()) cellId_Evis[id]+= h.EnergyDeposit;
+    else cellId_Evis[id]= h.EnergyDeposit;
     
     } // for 
   }
