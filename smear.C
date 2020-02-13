@@ -90,13 +90,14 @@ TH1* hNeutron_ang_reso;
 TH2* hNeutron_beta_recotrue_stt;
 TH2* hNeutron_beta_recotrue_ecal;
 //std::ofstream treefile;
-std::map<int,std::pair<int,int> > sttMap;
+std::map<int,std::pair<int,int> > sttMap;  // build only "the first" continuous chain by PrimaryId  -> for STT track building
 //std::map<int,std::pair<int,int> > ecalMap;
 //std::map<int,std::pair<int,int> > sttMap_prim;
 //std::map<int,std::pair<int,int> > ecalMap_prim;
-std::map<int, std::vector<int> > sttMap_prim2;
-std::map<int, std::vector<int> > ecalMap_prim2;
-
+std::map<int, std::vector<int> > sttMap_prim2; // build ALL continuous chain by PrimaryId -> for pi0-decayed gamma finding 
+std::map<int, std::vector<int> > ecalMap_prim2;  // build ALL continuous chain by PrimaryId -> for finding hits in ecal 
+std::map<int, std::vector<int> > N_sttMap_contr_primIndex;  // build ALL continuous chain by contrib[0] -> for finding neutron all daughters' hits
+std::map<int, std::vector<int> > N_ecalMap_contr_primIndex; // build ALL continuous chain by contrib[0] -> for finding neutron all daughters' hits
 
 const int kNPmax = 300;
 int         brIEntry;
@@ -113,6 +114,8 @@ int         brNXhit[kNPmax];
 int         brNYhit[kNPmax];
 char        brInfo[kNPmax][10];
 int iFillPar;
+
+void N_organizeHits_contr();
 int findgammaPrimaryId(int trackid);
 void smearPi0(int trackid);
 void smearPar(int trackid, std::string name);
@@ -1026,11 +1029,13 @@ bool smearNeutron(int trackid){
     std::cout<<" about to smear a non-primary neutron, stop right now, check why it happens"<<std::endl;
     return false;
   }
+  N_organizeHits_contr();
+
   bool isSTTdetectable=false;
   bool isECALdetectable=false;
 
-  if(sttMap_prim2.find(trackid)!=sttMap_prim2.end()){
-    const std::vector<int> &vec= sttMap_prim2[trackid];
+  if(N_sttMap_contr_primIndex.find(trackid)!=N_sttMap_contr_primIndex.end()){
+    const std::vector<int> &vec= N_sttMap_contr_primIndex[trackid];
     for(unsigned int i=0;i<vec.size()/2;i++){
       for(int j=vec[2*i];j<=vec[2*i+1];j++){
 	if(event->SegmentDetectors["Straw"].at(j).EnergyDeposit>250E-6) {isSTTdetectable=true; break;}
@@ -1040,9 +1045,9 @@ bool smearNeutron(int trackid){
     //    if(!isSTTdetectable) std::cout<<"this neutron has straw hits but none of them are detectable, check!!!"<<std::endl;
   }
   if(!isSTTdetectable) {
-    if(ecalMap_prim2.find(trackid)!=ecalMap_prim2.end()){
+    if(N_ecalMap_contr_primIndex.find(trackid)!=N_ecalMap_contr_primIndex.end()){
       std::map<int, double> cellId_Evis;
-      findEvis_forCell(ecalMap_prim2[trackid], cellId_Evis);
+      findEvis_forCell(N_ecalMap_contr_primIndex[trackid], cellId_Evis);
       for(auto cellE: cellId_Evis){
 	if(cellE.second > 0.1) { isECALdetectable=true;	  break;}
       }      
@@ -1235,8 +1240,77 @@ void organizeHits_prim2(){
     else
       {ecalMap_prim2[trackid].push_back(i); ecalMap_prim2[trackid].push_back(i);}
   } // for
-
 }
+
+bool isTopNeutron(int trackid, int& topId){
+  TG4Trajectory trk=event->Trajectories[trackid];
+
+  while(trk.ParentId!=-1){
+    trk=event->Trajectories[trk.ParentId];
+  }
+  topId=trk.TrackId;
+  return (trk.Name=="neutron");
+}
+
+void N_organizeHits_contr(){
+  std::map<int, std::vector<int> >  sttMap_temp;
+  std::map<int, std::vector<int> >  ecalMap_temp;
+  N_sttMap_contr_primIndex.clear();
+  N_ecalMap_contr_primIndex.clear();
+  int trackid;
+  for(unsigned int i=0; i<event->SegmentDetectors["Straw"].size(); i++){
+    trackid=event->SegmentDetectors["Straw"].at(i).Contrib[0];
+    if(sttMap_temp.find(trackid)==sttMap_temp.end()) { sttMap_temp[trackid].push_back(i); sttMap_temp[trackid].push_back(i); continue;}
+    if(i-sttMap_temp[trackid].back()==1)
+      sttMap_temp[trackid].back()=i;
+    else
+      {sttMap_temp[trackid].push_back(i); sttMap_temp[trackid].push_back(i);}
+  } // for
+
+  for(unsigned int i=0; i<event->SegmentDetectors["ECAL"].size(); i++){
+    trackid=event->SegmentDetectors["ECAL"].at(i).Contrib[0];
+    if(ecalMap_temp.find(trackid)==ecalMap_temp.end()) { ecalMap_temp[trackid].push_back(i); ecalMap_temp[trackid].push_back(i);continue;}
+    if(i-ecalMap_temp[trackid].back()==1)
+      ecalMap_temp[trackid].back()=i;
+    else
+      {ecalMap_temp[trackid].push_back(i); ecalMap_temp[trackid].push_back(i);}
+  } // for
+  int topid;
+  if(!sttMap_temp.empty()){
+    for(auto it = sttMap_temp.begin(); it != sttMap_temp.end(); it++ ) {
+      if(!isTopNeutron(it->first,topid)) continue;
+      else
+	N_sttMap_contr_primIndex[topid].insert(N_sttMap_contr_primIndex[topid].end(),it->second.begin(),it->second.end());
+      
+    }
+  }
+  if(!ecalMap_temp.empty()){
+    for(auto it = ecalMap_temp.begin(); it != ecalMap_temp.end(); it++) {
+      if(!isTopNeutron(it->first,topid)) continue;
+      else
+	N_ecalMap_contr_primIndex[topid].insert(N_ecalMap_contr_primIndex[topid].end(),it->second.begin(),it->second.end());      
+    }
+  }
+  /*
+  std::cout<<"-------N_sttMap_contr_primIndex map show:"<<std::endl;
+  for(auto pp: N_sttMap_contr_primIndex){
+    std::cout<<pp.first<<" ->";
+    assert(pp.second.size()%2==0);
+    for(auto ii:pp.second)
+      std::cout<<" "<<ii;
+    std::cout<<std::endl;
+  }
+  std::cout<<"-------N_ecalMap_contr_primIndex  map show:"<<std::endl;
+  for(auto pp: N_ecalMap_contr_primIndex){
+    std::cout<<pp.first<<" ->";
+    assert(pp.second.size()%2==0);
+    for(auto ii:pp.second)
+      std::cout<<" "<<ii;
+    std::cout<<std::endl;
+  }
+  */
+}
+
 void showHitMap(){
   std::cout<<"-------stt map show:"<<std::endl;
   for(auto pp:sttMap){
