@@ -1058,7 +1058,7 @@ bool smearNeutron(int trackid){
     return false;
   }
   
-    
+  
   double P_smear;
   double P=event->Trajectories[trackid].InitialMomentum.P();
   bool PequationSmearSucceed=false;
@@ -1069,6 +1069,7 @@ bool smearNeutron(int trackid){
     //    double m=event->Trajectories[trackid].InitialMomentum.Mag();
     double beta=P/E;
     int iTrueBetaBin=TMath::CeilNint(beta/(1.-0.)*100);
+    if(iTrueBetaBin==0) iTrueBetaBin=1; // <--- this solves static neutron decay problem ( neutron with P=0 will decay right at vertex to e-, proton) 
     double beta_smear=isSTTdetectable?hNeutron_beta_recotrue_stt->ProjectionY("",iTrueBetaBin,iTrueBetaBin)->GetRandom(): hNeutron_beta_recotrue_ecal->ProjectionY("",iTrueBetaBin,iTrueBetaBin)->GetRandom();
     //NOTE:  don't use this (when beta_smear>1, P_smear will become nan)  ----->  P_smear=m*beta_smear/sqrt(1-beta_smear*beta_smear);    
     P_smear=E*beta_smear;  // this sometimes will make P_smear > E true, but that's okay
