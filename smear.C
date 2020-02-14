@@ -219,6 +219,7 @@ int  findTopParent(int trackid){
 
 void fill1Par2tree(double recoPx, double recoPy, double recoPz, int trackid, double len, int nXhit, int nYhit, const char info[10]){
   //  if(std::isnan(recoPx) || std::isnan(recoPy) || std::isnan(recoPz))  { std::cout<<"fill nan"; std::exit(EXIT_FAILURE);}
+  if(recoPx==0 && recoPy==0 && recoPz==0) std::cout<<" recop=0 000000000000000000000000000000000000000000000, need check "<<std::endl;
   brRecoP4[iFillPar][0]=recoPx;
   brRecoP4[iFillPar][1]=recoPy;
   brRecoP4[iFillPar][2]=recoPz;
@@ -599,8 +600,12 @@ bool smearPar_ecal(int trackid, int primaryId=-1){
   double E_smear= E*ran->Gaus(1,de2e); // MeV
   int pdg=event->Trajectories[trackid].PDGCode;
   double m=dbpdg->GetParticle(pdg)->Mass() * 1000; // MeV
-  double P_smear=E_smear>m?sqrt(E_smear*E_smear-m*m):0; // MeV
+  while(E_smear<=m){
+    E_smear= E*ran->Gaus(1,de2e);
+  }
 
+  double P_smear=E_smear>m?sqrt(E_smear*E_smear-m*m):0; // MeV
+  //  std::cout<<"E:"<<E<<" E_smear:"<<E_smear<<" P_smear:"<<P_smear<<std::endl;
   double p0                        =    0.0034793;
   double p1                        =   -0.0151348;
   double p2                        =      1.52382;
@@ -727,6 +732,9 @@ bool smearChargedPar_stt(int trackid){
   //  double dPt2Pt=sqrt(pow(sigmas*Pt/0.3/B/Lyz/Lyz*sqrt(720./(nYhit+4)),2)+pow(0.045/B/sqrt(Lyz*x0),2));
   double dPt2Pt=sqrt(pow(sigmas*Pt/0.3/B/L/L*sqrt(720./(nYhit+4)),2)+pow(0.045/B/sqrt(L*x0),2));
   double Pt_smear=Pt*ran->Gaus(1, dPt2Pt);
+  while(Pt_smear<=0){
+    Pt_smear=Pt*ran->Gaus(1, dPt2Pt);
+  }
   double sigma_dipAng=13.6E-3/P*sqrt(L/x0)*(1+0.038*log(L/x0)); // from pdg
   //  double sigma_dipAng2=13.6E-3/P*sqrt(Lx/x0)*(1+0.038*log(Lx/x0)); // from pdg
   //  double sigma_dipAng3=13.6E-3/P*sqrt(Lyz/x0)*(1+0.038*log(Lyz/x0)); // from pdg
@@ -911,6 +919,9 @@ void smearPi0_external(int trackid){
     else
       rms=hPi0_mom_recotrue->ProjectionY("",70,100)->GetRMS();
     P_smear=P+ran->Gaus(0,rms);
+    while(P_smear<=0) {
+      P_smear=P+ran->Gaus(0,rms);
+    }
   }
 
   double Theta_smear= hPi0_ang_recotrue->ProjectionY("", iThetabin,iThetabin)->GetRandom();
@@ -1535,7 +1546,7 @@ int main(int argc, char *argv[]){
   herr_phi_pi0=new TH1F("herr_phi_pi0","",100,-50,50);
   herr_nu_E=new TH1F("herr_nu_E","",100,-30,30);
 
-  ran=new TRandom3(0); // 0 will always give different result when you recreate it
+  ran=new TRandom3(123); // 0 will always give different result when you recreate it
   //  ran->SetSeed(3722147861);
   std::cout<<"seed:"<<ran->GetSeed()<<std::endl;
   dbpdg = new TDatabasePDG();
