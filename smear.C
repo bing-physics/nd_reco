@@ -1546,7 +1546,7 @@ int main(int argc, char *argv[]){
   herr_phi_pi0=new TH1F("herr_phi_pi0","",100,-50,50);
   herr_nu_E=new TH1F("herr_nu_E","",100,-30,30);
 
-  ran=new TRandom3(123); // 0 will always give different result when you recreate it
+  ran=new TRandom3(0); // 0 will always give different result when you recreate it
   //  ran->SetSeed(3722147861);
   std::cout<<"seed:"<<ran->GetSeed()<<std::endl;
   dbpdg = new TDatabasePDG();
