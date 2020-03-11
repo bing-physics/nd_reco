@@ -9,9 +9,9 @@
 
 using std::cout;
 using std::endl;
-void readEdep_smeared(){
+void readEdep_smeared(TString filename){
   
-  TFile file("STT0_gsim1_0_1e18.4321.edep.smeared_truemusmearN.root","READ");
+  TFile file(filename);
   TTree * tree = (TTree *) file.Get("edep_smeared_tree");
   
   const int kNPmax = 300;
@@ -21,6 +21,8 @@ void readEdep_smeared(){
   int NPrim;
   double RecoP4[kNPmax][4];
   double TrueP4[kNPmax][4];
+  double RecoNuP4[4];
+  double TrueNuP4[4];
   int  Pdg[kNPmax];
   int  TrackId[kNPmax];
   int  ParentId[kNPmax];
@@ -36,6 +38,9 @@ void readEdep_smeared(){
   TBranch *brNPrim= tree->GetBranch("NPrim");
   TBranch *brRecoP4= tree->GetBranch("RecoP4");
   TBranch *brTrueP4= tree->GetBranch("TrueP4");
+  TBranch *brRecoNuP4= tree->GetBranch("RecoNuP4");
+  TBranch *brTrueNuP4= tree->GetBranch("TrueNuP4");
+
   TBranch *brPdg=tree->GetBranch("Pdg");
   TBranch *brTrackId=tree->GetBranch("TrackId");
   TBranch *brParentId=tree->GetBranch("ParentId");
@@ -50,6 +55,8 @@ void readEdep_smeared(){
   brNPrim-> SetAddress ( &NPrim);
   brRecoP4-> SetAddress (RecoP4);
   brTrueP4-> SetAddress (TrueP4);
+  brRecoNuP4-> SetAddress (RecoNuP4);
+  brTrueNuP4-> SetAddress (TrueNuP4);
   brPdg-> SetAddress ( Pdg);
   brTrackId-> SetAddress ( TrackId);
   brParentId-> SetAddress ( ParentId);
@@ -60,11 +67,12 @@ void readEdep_smeared(){
   brInfo -> SetAddress ( Info);
   
 
-  for(int i=0; i < 50; i++) {
+  for(int i=0; i < 5; i++) {
     tree->GetEntry(i);
     printf("\n ----------------------------------------------------------------------------------");
     //  std::cout<<"info:"<<Info<<std::endl;
     printf("\n %d ientry:%d   nprim: %5d", i, IEntry,NPrim);
+    printf("\n | %8.1f | %8.1f | %8.1f | %8.1f || %8.1f | %8.1f | %8.1f | %8.1f |", RecoNuP4[0], RecoNuP4[1],RecoNuP4[2], RecoNuP4[3], TrueNuP4[0],TrueNuP4[1],TrueNuP4[2], TrueNuP4[3]);
     printf("\n");
     printf("\n |   pdg  | trkid paren topPar|  recoPx    recoPy     recoPz     recoE  ||    truePx     truePy     truePz      trueE || length    nxhit   nyhit | INFO");
     for(int ip=0; ip<NPar; ip++) {
