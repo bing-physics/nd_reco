@@ -7,3 +7,6 @@ include("${ROOT_USE_FILE}")
 include_directories(${PROJECT_SOURCE_DIR})
 add_executable(smearit smear.C)
 target_link_libraries(smearit PUBLIC EDepSim::edepsim_io ${ROOT_LIBRARIES})
+
+add_executable(sandsmearit sandsmear.C)
+target_link_libraries(sandsmearit PUBLIC EDepSim::edepsim_io ${ROOT_LIBRARIES})

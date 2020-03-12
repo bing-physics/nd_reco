@@ -7,7 +7,7 @@
 // lambda -> , primary will break ( only for gamma, for charged particle, their primary are still lambda)
 // eta--> will break
 // sigma0 --> will break
-// sigma- --> will break for gamma, for neutron not break
+// sigma- --> will break for gamma(and other particles), for neutron not break
 
 // decay: pi+ -> mu+
 // decay: mu+ -> e+
@@ -105,6 +105,8 @@ int         brNPar;
 int         brNPrim;
 double      brRecoP4[kNPmax][4];
 double      brTrueP4[kNPmax][4];
+double  brRecoNuP4[4];
+double  brTrueNuP4[4];
 int         brPdg   [kNPmax];
 int         brTrackId[kNPmax];
 int         brParentId[kNPmax];
@@ -809,7 +811,7 @@ int findgammaPrimaryId(int trackid){
   if(parentId==-1) return trackid;
   if(event->Trajectories[parentId].Name=="gamma") return findgammaPrimaryId(parentId);
   if(event->Trajectories[parentId].Name=="pi0") return trackid;
-  if(event->Trajectories[parentId].Name=="lambda" || event->Trajectories[parentId].Name=="eta" || event->Trajectories[parentId].Name=="sigma0" || event->Trajectories[parentId].Name=="anti_lambda" || event->Trajectories[parentId].Name=="sigma-" ) return trackid;
+  if(event->Trajectories[parentId].Name=="lambda" || event->Trajectories[parentId].Name=="eta" || event->Trajectories[parentId].Name=="sigma0" || event->Trajectories[parentId].Name=="anti_lambda" || event->Trajectories[parentId].Name=="sigma-" || event->Trajectories[parentId].Name=="sigma+") return trackid;
   if(event->Trajectories[parentId].Name=="kaon0L" || event->Trajectories[parentId].Name=="kaon0S") return parentId;
   if(event->Trajectories[parentId].ParentId==-1) { std::cout<<" check this gamma parent(also top):"<<event->Trajectories[parentId].Name<<" gid:"<<trackid<<" iEntry:"<<iEntry<<std::endl;; return parentId;}
   int grandid=event->Trajectories[parentId].ParentId;
@@ -1367,6 +1369,7 @@ void smearPar(int trackid, std::string name){
   else if(name=="eta") smearDaughters(trackid); //eta decay right there to 3 pi0s or other modes
   else if(name=="anti_proton") smearChargedPar(trackid);
   else if(name=="nu_e"|| name=="anti_nu_e" || name=="anti_nu_mu" || name=="nu_mu" || name=="C12" || name=="O16" || name=="Ar40" || name=="deuteron") return;
+  else if(name=="Fe56" || name=="Al27" || name=="Pb207") return;
   else if(name=="anti_neutron") smearNeutron(trackid);
   else {
     std::cout<<"--->####################################### unknown par:"<<name<<"  iEntry:"<<iEntry<<" trackid:"<<trackid<<std::endl;
@@ -1426,10 +1429,14 @@ void smearEvent(){
   //  std::cout<<"iFillPar:"<<iFillPar<<std::endl;
   if(iFillPar==0) return;
   brNPar=iFillPar;
-  brNPrim=nPrim; 
+  brNPrim=nPrim;
+  brRecoNuP4[0]=recoNuPx;
+  brRecoNuP4[1]=recoNuPy;
+  brRecoNuP4[2]=recoNuPz;
+  double recoNuE=sqrt(recoNuPx*recoNuPx+recoNuPy*recoNuPy+recoNuPz*recoNuPz);
+  brRecoNuP4[3]=recoNuE;
   tree->Fill();
 
-  double recoNuE=sqrt(recoNuPx*recoNuPx+recoNuPy*recoNuPy+recoNuPz*recoNuPz);
   herr_nu_E->Fill((recoNuE-trueNuE)/trueNuE*100.);
   //  std::cout<<"recoNuE:"<<recoNuE<<" trueNuE:"<<trueNuE<<std::endl;
 }
@@ -1462,17 +1469,19 @@ std::vector<std::string> makefilelist(std::string st,int Nfilelist=0){
 
 
 int main(int argc, char *argv[]){
-  if(argc<3) { std::cout<<"two arguments needed"<<std::endl;return 0;}
+  if(argc<4) { std::cout<<"at least three arguments needed: smeartype(0: regular, 1:sttfv) , input, output, [debug1/2/3],[startentry],[nentry]"<<std::endl;return 0;}
   debug=-1;
+  bool sttFVsmear=std::atoi(argv[1]);
+  std::cout<<"sttFVsmear:"<<sttFVsmear<<std::endl;
   int testStartEntry=-1;
   int testNEntry=-1;
-  if(argc>=4){
-    if(std::strcmp(argv[3],"debug1")==0) debug=1;
-    else if(std::strcmp(argv[3],"debug2")==0) debug=2;
-    else if(std::strcmp(argv[3],"debug3")==0) debug=3;
+  if(argc>=5){
+    if(std::strcmp(argv[4],"debug1")==0) debug=1;
+    else if(std::strcmp(argv[4],"debug2")==0) debug=2;
+    else if(std::strcmp(argv[4],"debug3")==0) debug=3;
   }
-  if(argc>=5) { testStartEntry=std::atoi(argv[4]);}
-  if(argc==6) { testNEntry=std::atoi(argv[5]);}
+  if(argc>=6) { testStartEntry=std::atoi(argv[5]);}
+  if(argc==7) { testNEntry=std::atoi(argv[6]);}
   std::cout<<" %%%%%%%%%%%%%%%%%%%%%%%% debug level ########################   :  "<<debug<<std::endl;
 
   //  outf=new TFile("outf.root","recreate");
@@ -1503,7 +1512,7 @@ int main(int argc, char *argv[]){
   hNeutron_beta_recotrue_stt->Smooth();
   hNeutron_beta_recotrue_ecal->Smooth();
   
-  outTreeF=new TFile(argv[2],"recreate");
+  outTreeF=new TFile(argv[3],"recreate");
 
   TBranch * brEvtCode;
   TObjString* EvtCode = 0;
@@ -1518,6 +1527,8 @@ int main(int argc, char *argv[]){
   tree->Branch("NPrim", &brNPrim, "NPrim/I");
   tree->Branch("RecoP4",    brRecoP4,        "RecoP4[NPar][4]/D"); 
   tree->Branch("TrueP4",    brTrueP4,        "TrueP4[NPar][4]/D");
+  tree->Branch("RecoNuP4",    brRecoNuP4,        "RecoNuP4[4]/D");
+  tree->Branch("TrueNuP4",    brTrueNuP4,        "TrueNuP4[4]/D");
   tree->Branch("Pdg",    brPdg,        "Pdg[NPar]/I");
   tree->Branch("TrackId",    brTrackId,        "TrackId[NPar]/I");
   tree->Branch("ParentId",    brParentId,        "ParentId[NPar]/I");
@@ -1552,8 +1563,8 @@ int main(int argc, char *argv[]){
   dbpdg = new TDatabasePDG();
   gSystem->Load("libGeom");  
   
-  std::cout<<"****************** input file:"<<argv[1]<<std::endl;
-  gFile=new TFile(argv[1]);
+  std::cout<<"****************** input file:"<<argv[2]<<std::endl;
+  gFile=new TFile(argv[2]);
   geo = (TGeoManager*) gFile->Get("EDepSimGeometry");
   gEDepSimTree = (TTree*) gFile->Get("EDepSimEvents");
   gEDepSimTree->SetBranchAddress("Event",&event);    
@@ -1578,8 +1589,10 @@ int main(int argc, char *argv[]){
     if(debug>=1) std::cout<<" ############################################################## new event ####################################  "<<i<<std::endl;
     iEntry=i;
     gEDepSimTree->GetEntry(i);
-    TLorentzVector vtx=event->Primaries.begin()->GetPosition();
-    if(!inFV(vtx.X(),vtx.Y(),vtx.Z())) continue;
+    if(sttFVsmear) {
+      TLorentzVector vtx=event->Primaries.begin()->GetPosition();
+      if(!inFV(vtx.X(),vtx.Y(),vtx.Z())) continue;
+    }
     isHtarget=false;
     brIEntry=i;
     rootrackerTree->GetEntry(i);
@@ -1597,6 +1610,11 @@ int main(int argc, char *argv[]){
 
     targetpdg=StdHepPdg[1];
     trueNuE = StdHepP4[0][3]*1000.;
+    brTrueNuP4[0]=StdHepP4[0][0]*1000.;
+    brTrueNuP4[1]=StdHepP4[0][1]*1000.;
+    brTrueNuP4[2]=StdHepP4[0][2]*1000.;
+    brTrueNuP4[3]=StdHepP4[0][3]*1000.;
+
     if (StdHepPdg[1]==2212)  isHtarget=true;
     //    if(StdHepPdg[0]!=14 && StdHepPdg[0]!=-14 && StdHepPdg[1]==2212) std::cout<<" electron neutrino + htarget"<<" StdHepPdg[1]:"<<StdHepPdg[1]<<std::endl;
     //    std::cout<<"nupx:"<<StdHepP4[0][0]<<" nupy:"<<StdHepP4[0][1]<<" nupz:"<<StdHepP4[0][2]<<" nue:"<<StdHepP4[0][3]<<std::endl;
