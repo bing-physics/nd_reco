@@ -25,6 +25,7 @@
 #include <TRandom3.h>
 #include "TH1.h"
 #include "TH2.h"
+#include "TH3.h"
 #include "TGeoTrd2.h"
 #include "TGeoTube.h"
 #include <TTree.h>
@@ -49,7 +50,11 @@ TG4Event* event;
 double sigmas=200E-6; // m
 double B=0.6; 
 double x0=2.8; // m 
+
+bool addMeniscusE=false;
 TRandom3 *ran;
+const double centerZ=23910;
+const double centerY=-2384.73;
 TH2 *herr_dipAngle_stt;
 TH2 *herr_dipAng100_stt;
 TH2 *herr_thetaYZ100_stt;
@@ -68,8 +73,11 @@ TH1 *herr_p_pi0;
 TH1 *herr_theta_pi0;
 TH1 *herr_phi_pi0;
 TH1 *herr_nu_E;
-TH2 *herr_nu_E_iregion_ecal;
-TH2 *herr_nu_E_iregion_ecal2;
+TH3 *herr_nu_E_iregion_ecal;
+TH3 *herr_nu_E_iregion_ecal2;
+
+TH2 *hvtxXY[4];
+TH2 *hvtxZY[4];
 double recoNuPx;
 double recoNuPy;
 double recoNuPz;
@@ -93,6 +101,8 @@ TH2* hPi0_ang_recotrue;
 TH1* hNeutron_ang_reso;
 TH2* hNeutron_beta_recotrue_stt;
 TH2* hNeutron_beta_recotrue_ecal;
+
+
 //std::ofstream treefile;
 std::map<int,std::pair<int,int> > sttMap;  // build only "the first" continuous chain by PrimaryId  -> for STT track building
 //std::map<int,std::pair<int,int> > ecalMap;
@@ -121,7 +131,7 @@ int         brNYhit[kNPmax];
 char        brInfo[kNPmax][10];
 int iFillPar;
 
-double npe1MeV= 4.5; //3.6; //2.31;
+double npe1MeV= 3.6; //4.5; //3.6; //2.31;
 
 void N_organizeHits_contr();
 int findgammaPrimaryId(int trackid);
@@ -179,8 +189,8 @@ double E2PE(double E)
 
 bool inFV(double x, double y, double z){
   //  double centerX=0.;
-  double centerY=-2384.73;  // mm
-  double centerZ=23910; // mm
+  //  double centerY=-2384.73;  // mm
+  //  double centerZ=23910; // mm
 
   if(abs(x)>1490) return false;
   double r=sqrt((y-centerY)*(y-centerY)+(z-centerZ)*(z-centerZ));
@@ -189,8 +199,8 @@ bool inFV(double x, double y, double z){
 }
 
 bool inSTT(const TVector3 &pos){
-  double centerY=-2384.73;  // mm
-  double centerZ=23910; // mm
+  //  double centerY=-2384.73;  // mm
+  //  double centerZ=23910; // mm
   
   double x=pos.X();
   double y=pos.Y();
@@ -205,10 +215,11 @@ int inECALRegion(const TVector3 &pos){
 
   double x=pos.X();
   double y=pos.Y();
-  double centerY=-2384.73;  // mm
-  if(abs(x)<1200 && abs(y-centerY)<1200) return 1;
-  else if(abs(x)>1500 && abs(y-centerY)>1500) return 3;
-  return 2;
+  //  double centerY=-2384.73;  // mm
+  if(abs(x)<500 && abs(y-centerY)<500) return 0;
+  else if(abs(x)<1000 && abs(y-centerY)<1000) return 1;
+  else if(abs(x)<1500 && abs(y-centerY)<1500) return 2;
+  return 3;
   
 }
 void cleanBranch(){
@@ -724,7 +735,25 @@ bool smearPar_ecal(int trackid, int primaryId=-1){
   return true;
 }
 
-double getECAL_calE(){
+int getECAL_Plane(const TVector3 pos){
+  TGeoNode* node = geo->FindNode(pos.X(),pos.Y(),pos.Z());
+  TString slabstr = node->GetName();
+  int slabID;
+  int planeID=999;
+  //  TString modstr=geo->GetMother()->GetName();
+  if(slabstr.Contains("volECALActiveSlab") == false && slabstr.Contains("volECALPassiveSlab") == false) {
+    std::cout<<"something wrong ------------------> slabstr:"<<slabstr<<std::endl;
+    std::exit(EXIT_FAILURE);
+  }
+  TObjArray* obj1 = slabstr.Tokenize("_");
+  slabID = ((TObjString*) obj1->At(1))->GetString().Atoi();
+  planeID = slabID/40;
+  if (planeID > 4) planeID = 4;
+  return planeID;
+
+}
+
+double getECAL_calE(std::map<int, double> goodTrack_Ts){
   std::map<int, int> Id_npe;
   //  std::map<int, double> Id_totE;
   //  std::map<int, double> Id_totEcal;
@@ -741,6 +770,15 @@ double getECAL_calE(){
     double x = 0.5*(h.Start.X()+h.Stop.X());
     double y = 0.5*(h.Start.Y()+h.Stop.Y());
     double z = 0.5*(h.Start.Z()+h.Stop.Z());
+    double t= 0.5*(h.Start.T()+h.Stop.T());
+
+    //    if(goodTrack_Ts.find(h.Contrib[0])!=goodTrack_Ts.end())
+    //      if(t>goodTrack_Ts[h.Contrib[0]] ) 
+    //	continue;
+    if(z>centerZ) continue;
+    if(abs(x)>1690) continue;
+    if(abs(y-centerY)>2000) continue;
+
     TGeoNode* node = geo->FindNode(x,y,z);
     TString slabstr = node->GetName();
     TString modstr=geo->GetMother()->GetName();
@@ -847,6 +885,16 @@ double getECAL_calE(){
   return totnpe/npe1MeV;
 }
 
+double getMeniscusE(){
+
+  double E=0;
+  for(unsigned int i=0; i<event->SegmentDetectors["Meniscus"].size(); i++){
+
+    E+=event->SegmentDetectors["Meniscus"].at(i).EnergyDeposit;
+  }
+  return E;
+}
+
 bool getP_enteringSTT(int trackid, TVector3 &P){
 
   if(inSTT(event->Trajectories[trackid].Points[0].Position.Vect())) { /*std::cout<<" this track starts in STT !!!!! could be secondary particles , check !!!!!!!"<<std::endl; */ P=event->Trajectories[trackid].Points[0].Momentum; return true;}
@@ -867,12 +915,13 @@ bool getP_enteringSTT(int trackid, TVector3 &P){
 
 }
 
-bool smearChargedPar_stt(int trackid,TVector3 trueP, TVector3 &recoP){
+bool smearChargedPar_stt(int trackid,TVector3 trueP, TVector3 &recoP, double &T){
   // std::cout<<"stt smearing start --------------"<<trackid<<std::endl;
   // Ptran RMS from the equation, 
   // the angle between Ptran and Px smear by PDG multiscattering-RMS-equation, in which Px is decided.  
   // angle between Py and Pz is smeared by Roberto-provided equation with multiple-scattering(second) term replaced by PDG one
   //  std::cout<<"start smearChargedPar_stt:"<<trackid<<std::endl;
+  double earlyT, lateT=-999;
   int nYhit=0;
   int nXhit=0;
   double Lyz=0;
@@ -902,6 +951,7 @@ bool smearChargedPar_stt(int trackid,TVector3 trueP, TVector3 &recoP){
   //  const TG4HitSegment& hseg = ev->SegmentDetectors["Straw"].at(j);
   TLorentzVector mid= (h.Start+h.Stop)*0.5;
   prePos=mid;
+  earlyT=mid.T();
   TString name=geo->FindNode(mid.X(),mid.Y(),mid.Z())->GetName();
   if(name.Contains("horizontal")) nYhit++;
   else nXhit++;
@@ -914,6 +964,7 @@ bool smearChargedPar_stt(int trackid,TVector3 trueP, TVector3 &recoP){
     if(postPos.T()< prePos.T()) { // the time reversed hits are usually bad hits, break it
       //      if((i-ihit)*1.0<=0.5*nhit) std::cout<<"trackid:"<<trackid<<" time reverse, cut! ihit:"<<ihit<<" nhit+ihit:"<<nhit+ihit<<" i:"<<i<<std::endl;
       if((i-ihit)*1.0<0.5*nhit && nhit>15) std::cout<<"thistrack has >15hits but break befor half,mayneed lookinto!!!nhit: "<<nhit<<" i-ihit:"<<i-ihit<<" trackid:"<<trackid<<" iEntry:"<<iEntry<<std::endl;
+      lateT=prePos.T();
       break;}
     if(h.EnergyDeposit<250E-6) continue;
     //    postPos= (h.Start+h.Stop)*0.5;
@@ -926,6 +977,8 @@ bool smearChargedPar_stt(int trackid,TVector3 trueP, TVector3 &recoP){
     Lyz+= sqrt(dy*dy+dz*dz);
     L+= sqrt(dx*dx+dy*dy+dz*dz);    
     prePos=postPos;
+
+    lateT=postPos.T();
   }
 
   if(nYhit<4)  { 
@@ -1023,6 +1076,9 @@ bool smearChargedPar_stt(int trackid,TVector3 trueP, TVector3 &recoP){
   Pz_smear*=1000;
   recoP.SetXYZ(Px_smear,Py_smear,Pz_smear);
   
+
+  if(lateT==-999 || lateT<earlyT) { std::cout<<"finding T wrong: earlyT:"<<earlyT<<" lateT:"<<lateT<<std::endl; std::exit(EXIT_FAILURE);}
+  T=0.5*(earlyT+lateT);
   //  fill1Par2tree(Px_smear*1000., Py_smear*1000., Pz_smear*1000., trackid, L*1000, nXhit, nYhit, "sttsmear  "); // always use MeV to fill
   
   return true;
@@ -1806,30 +1862,33 @@ void smearEvent_ECAL(){
   if(sttMap.find(muId)==sttMap.end()) return;
   
   //  makeTree();
-  double ecalTotE=getECAL_calE();
+
   //  nuE+=ecalTotE;
   double sttKE=0;
   double sttE=0;
   bool smearMu=smearChargedPar_stt(muId);
   if(!smearMu) return;
 
+  std::map<int,double> goodTrack_Ts;
   for(auto id_hitpair: sttMap){
     int trackid=id_hitpair.first;
     if(debug>=1) std::cout<<"smear entering STT hits: trackid:"<<trackid<<std::endl;
     TVector3 pEnteringSTT,reco_pEnteringSTT;
     bool enter=getP_enteringSTT(trackid, pEnteringSTT);
     if(!enter) continue;
-    bool smeared=smearChargedPar_stt(trackid, pEnteringSTT, reco_pEnteringSTT);
+    double T;
+    bool smeared=smearChargedPar_stt(trackid, pEnteringSTT, reco_pEnteringSTT, T);
     if(!smeared) continue;
-
+    
     std::string name=event->Trajectories[trackid].Name;
     //    std::cout<<"name:"<<name<<std::endl;
     int pdg=event->Trajectories[trackid].PDGCode;
-    //    std::cout<<"name:"<<name<<" id:"<<trackid<<std::endl;
+    //    std::cout<<"name:"<<name<<" id:"<<trackid<<"true entering p4:";
     //    pEnteringSTT.Print();
     //    reco_pEnteringSTT.Print();
 
     if(pdg>1000000000) continue;
+    goodTrack_Ts[trackid]=T;
     double m=dbpdg->GetParticle(pdg)->Mass()*1000;  // MeV
     double E=sqrt(reco_pEnteringSTT.Mag2()+m*m);
     double KE=(E>m)?(E-m):0;
@@ -1843,19 +1902,31 @@ void smearEvent_ECAL(){
     //    else std::cout<<" unknown particle entering STT from ECAL with reconstructable momentum: "<<name<<std::endl;
     
   }
+
+  double ecalTotE=getECAL_calE(goodTrack_Ts);
+  
   double fermiP=250;
   double mTarget=(mPr+mN)/2.;
   double targetE=sqrt(fermiP*fermiP+mTarget*mTarget);
   double nuE=ecalTotE+sttE-targetE;
   double nuE2=ecalTotE+sttKE;
   
+  if(addMeniscusE) nuE2+=getMeniscusE();
+
+  int planeID=getECAL_Plane(event->Primaries.begin()->GetPosition().Vect());
+  if(planeID>5) return;
+
   if(debug>=1) std::cout<<"smear whole event success, fill nuE:"<<nuE2<<std::endl;
   brRecoNuP4[3]=nuE2;
   brNPar=iFillPar;
   tree->Fill();
   int iECALRegioin=inECALRegion(event->Primaries.begin()->GetPosition().Vect());
-  herr_nu_E_iregion_ecal->Fill((nuE-brTrueNuP4[3])/brTrueNuP4[3], iECALRegioin);
-  herr_nu_E_iregion_ecal2->Fill((nuE2-brTrueNuP4[3])/brTrueNuP4[3], iECALRegioin);
+  herr_nu_E_iregion_ecal->Fill((nuE-brTrueNuP4[3])/brTrueNuP4[3], iECALRegioin, planeID);
+  herr_nu_E_iregion_ecal2->Fill((nuE2-brTrueNuP4[3])/brTrueNuP4[3], iECALRegioin, planeID);
+
+  hvtxXY[iECALRegioin]->Fill(event->Primaries.begin()->GetPosition().Vect().X(),event->Primaries.begin()->GetPosition().Vect().Y());
+  hvtxZY[iECALRegioin]->Fill(event->Primaries.begin()->GetPosition().Vect().Z(),event->Primaries.begin()->GetPosition().Vect().Y());
+  //  if((nuE2-brTrueNuP4[3])/brTrueNuP4[3]> 0.2 ) std::cout<<"iEntry:"<<iEntry<<" nuE2:"<<nuE2<<" ecalTotE:"<<ecalTotE<<" sttKE:"<<sttKE<<" true nuE:"<<brTrueNuP4[3]<<" er:"<<(nuE2-brTrueNuP4[3])/brTrueNuP4[3]<<std::endl;
   //  std::cout<<"ecalTotE:"<<ecalTotE<<" brTrueNuP4[3]:"<<brTrueNuP4[3]<<" nuE:"<<nuE<<std::endl;
 }
 
@@ -1975,9 +2046,14 @@ int main(int argc, char *argv[]){
   herr_phi_pi0=new TH1F("herr_phi_pi0","",100,-50,50);
   herr_nu_E=new TH1F("herr_nu_E","",100,-30,30);
   
-  herr_nu_E_iregion_ecal=new TH2F("herr_nu_E_iregion_ecal","",100,-1,1,5,0,5);
-  herr_nu_E_iregion_ecal2=new TH2F("herr_nu_E_iregion_ecal2","",100,-1,1,5,0,5);
-  ran=new TRandom3(123); // 0 will always give different result when you recreate it
+  herr_nu_E_iregion_ecal=new TH3F("herr_nu_E_iregion_ecal","",100,-1,1,4,0,4,5,0,5);
+  herr_nu_E_iregion_ecal2=new TH3F("herr_nu_E_iregion_ecal2","",100,-1,1,4,0,4,5,0,5);
+  
+  for(int i=0;i<4;i++){
+    hvtxXY[i]=new TH2F(Form("hvtxXY%d",i),"",100,-1800,1800,100,-4800,200);
+    hvtxZY[i]=new TH2F(Form("hvtxZY%d",i),"",100,21500,26300,100,-4800, 200);
+  }
+  ran=new TRandom3(0); // 0 will always give different result when you recreate it
   //  ran->SetSeed(3722147861);
   std::cout<<"seed:"<<ran->GetSeed()<<std::endl;
   dbpdg = new TDatabasePDG();
@@ -2013,6 +2089,12 @@ int main(int argc, char *argv[]){
       TLorentzVector vtx=event->Primaries.begin()->GetPosition();
       if(!inFV(vtx.X(),vtx.Y(),vtx.Z())) continue;
     }
+    else{
+      if(event->Primaries.begin()->GetPosition().Z()>centerZ) continue;
+      if(abs(event->Primaries.begin()->GetPosition().X())> 1690) continue;
+      if(abs(event->Primaries.begin()->GetPosition().Y()-centerY)> 2000) continue;
+    }
+    if(debug>=1) {std::cout<<"vtx:--->  "; event->Primaries.begin()->GetPosition().Print();}
     isHtarget=false;
     brIEntry=i;
     rootrackerTree->GetEntry(i);
@@ -2027,9 +2109,9 @@ int main(int argc, char *argv[]){
       iChannel=3;
     else
       { std::cout<<"--code --->"<<code<<std::endl;std::exit(EXIT_FAILURE);}
-    //    if(event->Primaries.begin()->GetPosition().Z()>23910) continue;
+    //    if(event->Primaries.begin()->GetPosition().Z()>centerZ) continue;
     //    if(abs(event->Primaries.begin()->GetPosition().X())> 1690) continue;
-    //    if(abs(event->Primaries.begin()->GetPosition().Y())> 2000) continue;
+    //    if(abs(event->Primaries.begin()->GetPosition().Y()-centerY)> 2000) continue;
     if(abs(StdHepPdg[0])!=14) continue;
     targetpdg=StdHepPdg[1];
     trueNuE = StdHepP4[0][3]*1000.;
@@ -2038,10 +2120,10 @@ int main(int argc, char *argv[]){
     brTrueNuP4[2]=StdHepP4[0][2]*1000.;
     brTrueNuP4[3]=StdHepP4[0][3]*1000.;
 
-    if (StdHepPdg[1]==2212)  isHtarget=true;
+    if (StdHepPdg[1]==2212)   isHtarget=true;
     //    if(StdHepPdg[0]!=14 && StdHepPdg[0]!=-14 && StdHepPdg[1]==2212) std::cout<<" electron neutrino + htarget"<<" StdHepPdg[1]:"<<StdHepPdg[1]<<std::endl;
     //    std::cout<<"nupx:"<<StdHepP4[0][0]<<" nupy:"<<StdHepP4[0][1]<<" nupz:"<<StdHepP4[0][2]<<" nue:"<<StdHepP4[0][3]<<std::endl;
-    if(inSTT(event->Primaries.begin()->GetPosition().Vect()))   smearEvent_STT();
+    if(inSTT(event->Primaries.begin()->GetPosition().Vect()))  smearEvent_STT();
     else smearEvent_ECAL();
   }    
   std::cout<<"close files"<<std::endl;
@@ -2068,6 +2150,11 @@ int main(int argc, char *argv[]){
   herr_nu_E_iregion_ecal->Write();
   herr_nu_E_iregion_ecal2->Write();
   //  outTreeF->Write();
+  for(int i=0;i<4;i++){
+    hvtxXY[i]->Write();
+    hvtxZY[i]->Write();
+  }
+
   outTreeF->Close();
 
 }
