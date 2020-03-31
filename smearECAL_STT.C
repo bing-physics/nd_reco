@@ -52,9 +52,11 @@ double B=0.6;
 double x0=2.8; // m 
 
 bool addMeniscusE=false;
+bool addMeniscusE_temp=true;
 TRandom3 *ran;
 const double centerZ=23910;
 const double centerY=-2384.73;
+const double liqArWid=162.68; // mm 
 TH2 *herr_dipAngle_stt;
 TH2 *herr_dipAng100_stt;
 TH2 *herr_thetaYZ100_stt;
@@ -132,7 +134,7 @@ char        brInfo[kNPmax][10];
 int iFillPar;
 
 double npe1MeV= 3.6; //4.5; //3.6; //2.31;
-
+const double dedx_meniscus= 4.5;  //3;  //2.1; // MeV/cm 
 void N_organizeHits_contr();
 int findgammaPrimaryId(int trackid);
 void smearPi0(int trackid);
@@ -198,6 +200,13 @@ bool inFV(double x, double y, double z){
   return true;
 }
 
+bool inSTT(double x, double y,double z){
+  if(abs(x)>1690) return false;
+  double r=sqrt((y-centerY)*(y-centerY)+(z-centerZ)*(z-centerZ));
+  if(r>2000) return false;
+  return true;
+}
+
 bool inSTT(const TVector3 &pos){
   //  double centerY=-2384.73;  // mm
   //  double centerZ=23910; // mm
@@ -211,6 +220,18 @@ bool inSTT(const TVector3 &pos){
   return true;
 }
 
+bool inLiqArMeniscus(const TVector3 &pos){
+  
+  if(!inSTT(pos)) return false;
+  if(pos.Z()> (centerZ-2000+liqArWid)) return false;
+  return true;
+}
+
+bool inSTT_notMeniscus(const TVector3 &pos){
+  if(!inSTT(pos)) return false;
+  if(pos.Z()< (centerZ-2000+liqArWid)) return false;
+  return true;
+}
 int inECALRegion(const TVector3 &pos){
 
   double x=pos.X();
@@ -291,7 +312,8 @@ void showAll(){
       //      std::cout<<" name:"<<h->GetVolName();
       //            std::cout << " L: " << h->TrackLength;
       TLorentzVector mid= (h->Start+h->Stop)*0.5;
-      TString name=geo->FindNode(mid.X(),mid.Y(),mid.Z())->GetName();
+      //      TString name=geo->FindNode(mid.X(),mid.Y(),mid.Z())->GetName();
+      TString name=geo->FindNode(h->Start.X(),h->Start.Y(),h->Start.Z())->GetName();
       std::cout<<" "<<name;
       std::cout<<" start:"<<h->Start.X()<<" "<<h->Start.Y()<<" "<<h->Start.Z()<<" "<<h->Start.T()<<" endT:"<<h->Stop.T();
       if((h+1)!= d->second.end() && (h+1)->Start.T()<h->Start.T()) std::cout<<"   !!!!!!! time reverted";
@@ -753,7 +775,9 @@ int getECAL_Plane(const TVector3 pos){
 
 }
 
-double getECAL_calE(std::map<int, double> goodTrack_Ts){
+//double getECAL_calE(std::map<int, double> goodTrack_Ts, std::map<int, TVector3> &trkId_lastPos){
+double getECAL_calE(std::map<int, TVector3> &trkId_lastPos){
+  trkId_lastPos.clear();
   std::map<int, int> Id_npe;
   //  std::map<int, double> Id_totE;
   //  std::map<int, double> Id_totEcal;
@@ -761,7 +785,7 @@ double getECAL_calE(std::map<int, double> goodTrack_Ts){
   int totnpe=0;
   for(unsigned int i=0; i<event->SegmentDetectors["ECAL"].size(); i++){
     //    int primid=event->SegmentDetectors["ECAL"].at(i).PrimaryId;
-    //    int contribid=event->SegmentDetectors["ECAL"].at(i).Contrib[0];
+    int contribid=event->SegmentDetectors["ECAL"].at(i).Contrib[0];
     //    if(event->Trajectories[primid].Name!="mu-" || event->Trajectories[contribid].Name!="mu-") continue;
 
     const TG4HitSegment& h = event->SegmentDetectors["ECAL"].at(i);
@@ -830,6 +854,8 @@ double getECAL_calE(std::map<int, double> goodTrack_Ts){
       double cellw = (dx1+dx2) / 12.;
       cellID = dis / cellw;
 
+      if(slabstr=="volECALActiveSlab_0_PV_0") trkId_lastPos[contribid]=h.Stop.Vect();
+      
     }
     else if(slabstr.Contains("vol_endECALActiveSlab") == true){
 
@@ -895,6 +921,73 @@ double getMeniscusE(){
   return E;
 }
 
+bool crossMeniscus(const TVector3 &one, const TVector3 &two){
+  
+  double z0=centerZ-2000+liqArWid;
+  if( (two.Z()-z0)*(one.Z()-z0)>0) return false;
+  double r=(z0-one.Z())/(two.Z()-one.Z());
+  double x0=one.X()+r*(two.X()-one.X());
+  double y0=one.Y()+r*(two.Y()-one.Y());
+  if(!inSTT(x0,y0,z0)) return false;
+  return true;
+}
+
+double getKElost(double m, double startP, double endP=0){ 
+  return (sqrt(startP*startP+m*m) - sqrt(endP*endP+m*m));
+}
+
+
+double getMeniscusE_temp(){
+
+  std::cout<<"%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% start getMeniscusE_temp %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"<<std::endl;
+  double depE=0;
+  double Pstart, Pend;
+  bool entered_Meniscus=false;
+  bool outed_Meniscus=false;
+  double x,y,z,r,z2;
+  for(int i=0;i<event->Trajectories.size();i++){
+    //    int trackid=event->Trajectories[i].TrackId;
+    int pdg=event->Trajectories[i].PDGCode; // i should be same as trackid
+    std::cout<<"-------------i:"<<i<<" pdg:"<<pdg<<std::endl;
+    if(pdg>1000000000) { std::cout<<"particle pdg > 1000000000:"<<pdg<<std::endl; std::exit(EXIT_FAILURE);}
+    double m=dbpdg->GetParticle(pdg)->Mass()*1000;  // MeV
+    x=event->Trajectories[i].Points[0].Position.X();
+    y=event->Trajectories[i].Points[0].Position.Y();
+    z=event->Trajectories[i].Points[0].Position.Z();    
+    r=sqrt((y-centerY)*(y-centerY)+(z-centerZ)*(z-centerZ));
+    z2=z-centerZ+2000;
+    TGeoNode* node = geo->FindNode(x,y,z);
+    
+    std::cout<<"0 pos "<<node->GetName()<<" r"<<r<<" z2:"<<z2<<" pos: "; event->Trajectories[i].Points[0].Position.Vect().Print();
+    if(inSTT(event->Trajectories[i].Points[0].Position.Vect())) { std::cout<<" this track starts in STT !!!!! could be secondary particles , check !!!!!!!"<<std::endl; /* std::exit(EXIT_FAILURE); */ }
+
+    for(int j=1;j<event->Trajectories[i].Points.size();j++){
+      x=event->Trajectories[i].Points[j].Position.X();
+      y=event->Trajectories[i].Points[j].Position.Y();
+      z=event->Trajectories[i].Points[j].Position.Z();
+      r=sqrt((y-centerY)*(y-centerY)+(z-centerZ)*(z-centerZ));
+      z2=z-centerZ+2000;
+      node = geo->FindNode(x,y,z);
+      std::cout<<"j:"<<j<<" "<<node->GetName()<<" r"<<r<<" z2:"<<z2<<" pos: "; event->Trajectories[i].Points[j].Position.Vect().Print();
+      if(crossMeniscus(event->Trajectories[i].Points[j-1].Position.Vect(),event->Trajectories[i].Points[j].Position.Vect())) {
+	std::cout<<"crossed"<<std::endl;
+	event->Trajectories[i].Points[j-1].Position.Vect().Print();
+	event->Trajectories[i].Points[j].Position.Vect().Print();
+      }
+      //      if(inLiqArMeniscus(event->Trajectories[i].Points[j].Position.Vect())) { std::cout<<"enteringMeniscus "<<j<<std::endl; entered_Meniscus=true; Pstart=event->Trajectories[i].Points[j].Position.P(); continue;} 
+      //      if(inSTT_notMeniscus(event->Trajectories[i].Points[j].Position.Vect()) && entered_Meniscus==true ) { std::cout<<"leavingMeniscus "<<j<<std::endl; outed_Meniscus=true; Pend=event->Trajectories[i].Points[j].Position.P(); break;}
+    }
+
+    //    int npoints=event->Trajectories[i].Points.size();
+    //    if(entered_Meniscus==false) {}
+    //    else if(entered_Meniscus==true && outed_Meniscus==true) {   std::cout<<" good, entered Meniscus and outed"<<std::endl; depE+=getKElost(m, Pstart, Pend); }
+    //    else if(entered_Meniscus==true && outed_Meniscus==false && inLiqArMeniscus(event->Trajectories[i].Points[npoints-1].Position.Vect())) { std::cout<<" still good, entered Meniscus and stayed there"<<std::endl; depE+=getKElost(m,Pstart); }
+    //    else { std::cout<<" check this track, entered meniscus"<<std::endl; std::exit(EXIT_FAILURE);}
+  }
+  std::cout<<"%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% end getMeniscusE_temp %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"<<std::endl;
+  return depE;
+}
+
 bool getP_enteringSTT(int trackid, TVector3 &P){
 
   if(inSTT(event->Trajectories[trackid].Points[0].Position.Vect())) { /*std::cout<<" this track starts in STT !!!!! could be secondary particles , check !!!!!!!"<<std::endl; */ P=event->Trajectories[trackid].Points[0].Momentum; return true;}
@@ -941,6 +1034,7 @@ bool smearChargedPar_stt(int trackid,TVector3 trueP, TVector3 &recoP, double &T)
   double dy,dz,dx;
   unsigned int ihit=sttMap[trackid].first;
   int nhit=sttMap[trackid].second;
+  if(nhit<4) return false;
   //  if(ihit>0) { if(event->SegmentDetectors["Straw"].at(ihit-1).Contrib[0]==trackid) { std::cout<<" wrong"; std::exit(EXIT_FAILURE);}}
   //  if(event->SegmentDetectors["Straw"].size()>(ihit+nhit) ) {if(event->SegmentDetectors["Straw"].at(ihit+nhit).Contrib[0]==trackid) {std::cout<<" wrong"; std::exit(EXIT_FAILURE);}}
   
@@ -980,8 +1074,8 @@ bool smearChargedPar_stt(int trackid,TVector3 trueP, TVector3 &recoP, double &T)
 
     lateT=postPos.T();
   }
-
-  if(nYhit<4)  { 
+   //////  use 6 instead of 4  ////////
+  if(nYhit<6)  { 
     //    std::cout<<"stt smear failed "<<nYhit<<std::endl;
     return false;
   } // fill1Par2tree(-999,-999,-999, trackid, L, nXhit, nYhit, "sttFail") ; return false;}
@@ -1094,11 +1188,12 @@ bool smearChargedPar_stt(int trackid){
     //    std::cout<<"zero stt hit, stt smear fail!"<<std::endl;
     return false;
   }
-
+  
   TLorentzVector prePos, postPos;
   double dy,dz,dx;
   unsigned int ihit=sttMap[trackid].first;
   int nhit=sttMap[trackid].second;
+  if(nhit<4) return false;
   TG4HitSegment  h= event->SegmentDetectors["Straw"].at(ihit);
   unsigned int i=(ihit+1);
   if( (event->SegmentDetectors["Straw"].at(ihit+1).Start.T()<h.Start.T() || event->SegmentDetectors["Straw"].at(ihit+1).Stop.T()<h.Stop.T() ) && h.Contrib.size()>1) 
@@ -1549,13 +1644,16 @@ void organizeHits(){
     if(sttMap.find(posttrackid) ==sttMap.end())
       sttMap[posttrackid]= std::make_pair(istart,nhit);
   }
+
+  /*
   for(auto it = sttMap.begin(); it != sttMap.end(); ) {
     if(it->second.second <4)
       it = sttMap.erase(it);
     else
       ++it;
   }
-
+  */
+  
   /*
   if(event->SegmentDetectors["ECAL"].size()>0){
     pretrackid=event->SegmentDetectors["ECAL"].begin()->Contrib[0];
@@ -1848,6 +1946,23 @@ int findMuId(){
   
 }
 
+bool find_frontSTT_pos(std::pair<int,int> hitpair, TVector3 &pos){
+  unsigned int ihit=hitpair.first;
+  int nhit=hitpair.second;
+  int ntry=5<nhit?5:nhit; // <------
+  for(int i=ihit ;i<(ihit+ntry);i++){
+    const TG4HitSegment &h=event->SegmentDetectors["Straw"].at(i);
+    double x = h.Start.X();
+    double y = h.Start.Y();
+    double z = h.Start.Z();
+    TGeoNode* node = geo->FindNode(x,y,z);
+    TString slabstr = node->GetName();
+    if(slabstr=="horizontalST_Ar_air_lv_PV_0") { pos=h.Start.Vect(); return true;}
+  }
+  
+  return false;
+}
+
 void smearEvent_ECAL(){
 
   if(debug>=1) std::cout<<"start to smear this ECAL event"<<std::endl;
@@ -1856,26 +1971,40 @@ void smearEvent_ECAL(){
   if(debug>=3)  showAll();
   organizeHits();
   iFillPar=0;
-
   int muId=findMuId();
   if(muId==-999) return;
   if(sttMap.find(muId)==sttMap.end()) return;
   
   //  makeTree();
-
   //  nuE+=ecalTotE;
   double sttKE=0;
   double sttE=0;
   bool smearMu=smearChargedPar_stt(muId);
   if(!smearMu) return;
+  double meniscusKE=0;
+  std::map<int, TVector3> trkId_lastPos;
+  double ecalTotE=getECAL_calE(trkId_lastPos);
+  
+  //  std::map<int,double> goodTrack_Ts;
 
-  std::map<int,double> goodTrack_Ts;
   for(auto id_hitpair: sttMap){
+
     int trackid=id_hitpair.first;
     if(debug>=1) std::cout<<"smear entering STT hits: trackid:"<<trackid<<std::endl;
     TVector3 pEnteringSTT,reco_pEnteringSTT;
     bool enter=getP_enteringSTT(trackid, pEnteringSTT);
     if(!enter) continue;
+
+    if(trkId_lastPos.find(trackid)!=trkId_lastPos.end()){
+      TVector3 endpos;
+      double dis; // mm 
+      bool findit=find_frontSTT_pos(id_hitpair.second, endpos);
+      if(findit){
+	dis=(trkId_lastPos[trackid]-endpos).Mag();
+	meniscusKE+=dedx_meniscus*dis/10.;
+      }
+    }
+
     double T;
     bool smeared=smearChargedPar_stt(trackid, pEnteringSTT, reco_pEnteringSTT, T);
     if(!smeared) continue;
@@ -1886,13 +2015,13 @@ void smearEvent_ECAL(){
     //    std::cout<<"name:"<<name<<" id:"<<trackid<<"true entering p4:";
     //    pEnteringSTT.Print();
     //    reco_pEnteringSTT.Print();
-
+    
     if(pdg>1000000000) continue;
-    goodTrack_Ts[trackid]=T;
+    //    goodTrack_Ts[trackid]=T;
     double m=dbpdg->GetParticle(pdg)->Mass()*1000;  // MeV
     double E=sqrt(reco_pEnteringSTT.Mag2()+m*m);
     double KE=(E>m)?(E-m):0;
-    
+
     sttKE+=KE;
     sttE+=E;
     if(debug>=1) std::cout<<"will add E/KE to nu: E:"<<E<<" KE:"<<KE<<" name:"<<name<<std::endl;
@@ -1900,19 +2029,30 @@ void smearEvent_ECAL(){
     //    else if(name=="proton" || name=="neutron" ) nuE+=KE;
     //    else if(name=="pi+" || name=="pi-" || name=="pi0" || name=="kaon+" || name=="kaon-") nuE+=E;
     //    else std::cout<<" unknown particle entering STT from ECAL with reconstructable momentum: "<<name<<std::endl;
-    
   }
-
-  double ecalTotE=getECAL_calE(goodTrack_Ts);
   
+  for(auto trkid_lastPo: trkId_lastPos){
+    if(sttMap.find(trkid_lastPo.first)==sttMap.end()){
+      int pdg=event->Trajectories[trkid_lastPo.first].PDGCode;
+      if(pdg>1000000000) continue;
+      int np=event->Trajectories[trkid_lastPo.first].Points.size();
+      double m=dbpdg->GetParticle(pdg)->Mass()*1000;  // MeV
+      double p=event->Trajectories[trkid_lastPo.first].Points[np-2].Momentum.Mag();
+      meniscusKE+=sqrt(p*p+m*m)-m;
+      //      std::cout<<"last point p:"; event->Trajectories[trkid_lastPo.first].Points[np-2].Momentum.Print();
+    }
+  }
+  
+
   double fermiP=250;
   double mTarget=(mPr+mN)/2.;
   double targetE=sqrt(fermiP*fermiP+mTarget*mTarget);
   double nuE=ecalTotE+sttE-targetE;
   double nuE2=ecalTotE+sttKE;
-  
-  if(addMeniscusE) nuE2+=getMeniscusE();
 
+  if(addMeniscusE) nuE2+=getMeniscusE();
+  else if(addMeniscusE_temp) nuE2+=meniscusKE;
+  
   int planeID=getECAL_Plane(event->Primaries.begin()->GetPosition().Vect());
   if(planeID>5) return;
 
@@ -2123,7 +2263,7 @@ int main(int argc, char *argv[]){
     if (StdHepPdg[1]==2212)   isHtarget=true;
     //    if(StdHepPdg[0]!=14 && StdHepPdg[0]!=-14 && StdHepPdg[1]==2212) std::cout<<" electron neutrino + htarget"<<" StdHepPdg[1]:"<<StdHepPdg[1]<<std::endl;
     //    std::cout<<"nupx:"<<StdHepP4[0][0]<<" nupy:"<<StdHepP4[0][1]<<" nupz:"<<StdHepP4[0][2]<<" nue:"<<StdHepP4[0][3]<<std::endl;
-    if(inSTT(event->Primaries.begin()->GetPosition().Vect()))  smearEvent_STT();
+    if(inSTT(event->Primaries.begin()->GetPosition().Vect())) smearEvent_STT(); // std::cout<<"have stt event"<<std::endl; //  continue; // smearEvent_STT();
     else smearEvent_ECAL();
   }    
   std::cout<<"close files"<<std::endl;
