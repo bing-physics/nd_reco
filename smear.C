@@ -722,7 +722,7 @@ bool smearChargedPar_stt(int trackid){
   double Px=initP.X();
   double P=initP.Mag();
   double dipAng=atan(Px/Pt);
-  double thetaYZ=atan(initP.Y()/initP.Z());
+  double thetaYZ=TMath::ATan2(initP.Y(),initP.Z());
   //  std::cout<<"Lyz:"<<Lyz<<" P:"<<P<<std::endl;
   Lx=sqrt(L*L-Lyz*Lyz);
   L/=1000;
@@ -1437,7 +1437,7 @@ void smearEvent(){
   brRecoNuP4[3]=recoNuE;
   tree->Fill();
 
-  herr_nu_E->Fill((recoNuE-trueNuE)/trueNuE*100.);
+  herr_nu_E->Fill((recoNuE-trueNuE)/trueNuE);
   //  std::cout<<"recoNuE:"<<recoNuE<<" trueNuE:"<<trueNuE<<std::endl;
 }
 
@@ -1555,7 +1555,7 @@ int main(int argc, char *argv[]){
   herr_p_pi0=new TH1F("herr_p_pi0","",100,-50,50);
   herr_theta_pi0=new TH1F("herr_theta_pi0","",100,-50,50);
   herr_phi_pi0=new TH1F("herr_phi_pi0","",100,-50,50);
-  herr_nu_E=new TH1F("herr_nu_E","",100,-30,30);
+  herr_nu_E=new TH1F("herr_nu_E","",100,-1,1);
 
   ran=new TRandom3(0); // 0 will always give different result when you recreate it
   //  ran->SetSeed(3722147861);
