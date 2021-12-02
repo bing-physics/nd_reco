@@ -1,0 +1,7 @@
+CMakeFiles
+smearEcal_check
+*.root
+Makefile
+cmake_install.cmake
+CMakeCache.txt
+*~
