@@ -10,7 +10,7 @@
 2. make
 3.
 ```
-./smearBMgo -g 870 -v both -i inputEdepSimFile.root  out.root
+./smearBMgo -g 870 -v both -i inputEdepSimFile.root -o out.root
 ```
 or check the detailed usage by
 ```
