@@ -44,6 +44,8 @@
 #include <assert.h> 
 using std::cout;
 using std::endl;
+std::string ECALNAME="EMCalSci";
+std::string LarSensName="LArHit";
 TTree* gEDepSimTree = NULL;
 TGeoManager *geo;
 TG4Event* event;
@@ -58,10 +60,10 @@ bool primaryMuFilled;
 TRandom3 *ran;
 const double centerZ=23910;
 const double centerY=-2384.73;
-const double liqArWid=162.68; // mm 
+double GrainandGapLength; ///mm
 
 const double offsets[5]={-0.01282,-0.007503,-0.006294,-0.01719,-0.04464};
-const double offsets2[5]={-0.01885,-0.01506,-0.01736,-0.03367,-0.0592};
+//const double offsets2[5]={-0.01885,-0.01506,-0.01736,-0.03367,-0.0592};
 
 //double ecalhit2vtx_max;
 TH2 *herr_dipAngle_stt;
@@ -248,7 +250,7 @@ bool inSTT(const TVector3 &pos){
 bool inLiqArMeniscus(const TVector3 &pos){
   
   if(!inSTT(pos)) return false;
-  if(pos.Z()> (centerZ-2000+liqArWid)) return false;
+  if(pos.Z()> (centerZ-2000+GrainandGapLength)) return false;
   return true;
 }
 
@@ -263,7 +265,7 @@ bool inFV_Meniscus(const TVector3 &pos){
 }
 bool inSTT_notMeniscus(const TVector3 &pos){
   if(!inSTT(pos)) return false;
-  if(pos.Z()< (centerZ-2000+liqArWid)) return false;
+  if(pos.Z()< (centerZ-2000+GrainandGapLength)) return false;
   return true;
 }
 int inECALRegion(const TVector3 &pos){
@@ -520,7 +522,7 @@ void findEvis_forCell(std::vector<int> hitchains, std::map<int, double> &cellId_
   //  if(hitchains.size()%2!=0) std::exit(EXIT_FAILURE);
   for(unsigned int i=0;i<hitchains.size()/2;i++){
     for(int j = hitchains[2*i]; j <= hitchains[2*i+1]; j++){
-      const TG4HitSegment& h = event->SegmentDetectors["ECAL"].at(j);
+      const TG4HitSegment& h = event->SegmentDetectors[ECALNAME].at(j);
       double x = 0.5*(h.Start.X()+h.Stop.X());
       double y = 0.5*(h.Start.Y()+h.Stop.Y());
       double z = 0.5*(h.Start.Z()+h.Stop.Z());
@@ -608,7 +610,7 @@ void smearFirstHitPosition(int starthit, double sigmaX, double sigmaY, double *p
   sigmaX*=10.; //cm -> mm
   sigmaY*=10.; //cm --> mm
   //  std::cout<<"start smearFirstHitPosition starthit"<<starthit<<std::endl;
-  const TG4HitSegment& h = event->SegmentDetectors["ECAL"].at(starthit);
+  const TG4HitSegment& h = event->SegmentDetectors[ECALNAME].at(starthit);
   double x = 0.5*(h.Start.X()+h.Stop.X());
   double y = 0.5*(h.Start.Y()+h.Stop.Y());
   double z = 0.5*(h.Start.Z()+h.Stop.Z());
@@ -681,7 +683,7 @@ void bruteforceFindHit_ecal(int trackid, int primid, std::vector<int> &allhits, 
   if(havechild){
     for(unsigned int i=0;i<hitchains.size()/2;i++){
       for(int j = hitchains[2*i]; j <= hitchains[2*i+1]; j++){
-	if( !isthisParent(event->SegmentDetectors["ECAL"].at(j).Contrib[0], trackid)) { continue;}
+	if( !isthisParent(event->SegmentDetectors[ECALNAME].at(j).Contrib[0], trackid)) { continue;}
 	//      std::cout<<"j:"<<j<<" check1pass"<<std::endl;
 	if(allhits.size()==0) {allhits.push_back(j);allhits.push_back(j);}
 	else if(j-allhits.back()==1) allhits.back()=j;
@@ -693,7 +695,7 @@ void bruteforceFindHit_ecal(int trackid, int primid, std::vector<int> &allhits, 
   else{
     for(unsigned int i=0;i<hitchains.size()/2;i++){
       for(int j = hitchains[2*i]; j <= hitchains[2*i+1]; j++){
-	if(event->SegmentDetectors["ECAL"].at(j).Contrib[0]!=trackid) { continue;}
+	if(event->SegmentDetectors[ECALNAME].at(j).Contrib[0]!=trackid) { continue;}
 	//      std::cout<<"j:"<<j<<" check1pass"<<std::endl;
         if(allhits.size()==0) {allhits.push_back(j);allhits.push_back(j);}
         else if(j-allhits.back()==1) allhits.back()=j;
@@ -829,12 +831,12 @@ double getECAL_calE(double &totDe){
 
   int totnpe=0;
   totDe=0;
-  for(unsigned int i=0; i<event->SegmentDetectors["ECAL"].size(); i++){
-    //    int primid=event->SegmentDetectors["ECAL"].at(i).PrimaryId;
-    //    int contribid=event->SegmentDetectors["ECAL"].at(i).Contrib[0];
+  for(unsigned int i=0; i<event->SegmentDetectors[ECALNAME].size(); i++){
+    //    int primid=event->SegmentDetectors[ECALNAME].at(i).PrimaryId;
+    //    int contribid=event->SegmentDetectors[ECALNAME].at(i).Contrib[0];
     //    if(event->Trajectories[primid].Name!="mu-" || event->Trajectories[contribid].Name!="mu-") continue;
 
-    const TG4HitSegment& h = event->SegmentDetectors["ECAL"].at(i);
+    const TG4HitSegment& h = event->SegmentDetectors[ECALNAME].at(i);
     double de=h.EnergyDeposit;
 
     //    double len=h.TrackLength;
@@ -968,7 +970,7 @@ void get1ecalhit_info(int ihit, double &de_pass){
 
   
   de_pass=0;
-  const TG4HitSegment& h = event->SegmentDetectors["ECAL"].at(ihit);
+  const TG4HitSegment& h = event->SegmentDetectors[ECALNAME].at(ihit);
     double de=h.EnergyDeposit;
     //    double len=h.TrackLength;
     double x = 0.5*(h.Start.X()+h.Stop.X());
@@ -1109,9 +1111,9 @@ void get1ecalhit_info(int ihit, double &de_pass){
 double getMeniscusE(){
 
   double E=0;
-  for(unsigned int i=0; i<event->SegmentDetectors["Lar"].size(); i++){
+  for(unsigned int i=0; i<event->SegmentDetectors[LarSensName].size(); i++){
 
-    E+=event->SegmentDetectors["Lar"].at(i).EnergyDeposit;
+    E+=event->SegmentDetectors[LarSensName].at(i).EnergyDeposit;
   }
   //  std::cout<<"Lar E:"<<E<<std::endl;
   return E;
@@ -1119,7 +1121,7 @@ double getMeniscusE(){
 /*
 bool crossMeniscus(const TVector3 &one, const TVector3 &two){
   
-  double z0=centerZ-2000+liqArWid;
+  double z0=centerZ-2000+GrainandGapLength;
   if( (two.Z()-z0)*(one.Z()-z0)>0) return false;
   double r=(z0-one.Z())/(two.Z()-one.Z());
   double x0=one.X()+r*(two.X()-one.X());
@@ -1873,13 +1875,13 @@ void organizeHits(){
 
   
   /*
-  if(event->SegmentDetectors["ECAL"].size()>0){
-    pretrackid=event->SegmentDetectors["ECAL"].begin()->Contrib[0];
+  if(event->SegmentDetectors[ECALNAME].size()>0){
+    pretrackid=event->SegmentDetectors[ECALNAME].begin()->Contrib[0];
     nhit=1;
     istart=0;
     posttrackid=pretrackid;
-    for(unsigned long i=1; i<event->SegmentDetectors["ECAL"].size(); i++){
-      posttrackid=event->SegmentDetectors["ECAL"].at(i).Contrib[0];
+    for(unsigned long i=1; i<event->SegmentDetectors[ECALNAME].size(); i++){
+      posttrackid=event->SegmentDetectors[ECALNAME].at(i).Contrib[0];
       //      std::cout<<"posttrackid:"<<posttrackid<<" nhit:"<<nhit<<std::endl;
       if(posttrackid==pretrackid) { nhit++;continue;}
       if(ecalMap.find(pretrackid) ==ecalMap.end())
@@ -1924,13 +1926,13 @@ void organizeHits_prim(){
       sttMap_prim[posttrackid]= std::make_pair(istart,nhit);
   }
 
-  if(event->SegmentDetectors["ECAL"].size()>0){
-    pretrackid=event->SegmentDetectors["ECAL"].begin()->PrimaryId;
+  if(event->SegmentDetectors[ECALNAME].size()>0){
+    pretrackid=event->SegmentDetectors[ECALNAME].begin()->PrimaryId;
     nhit=1;
     istart=0;
     posttrackid=pretrackid;
-    for(unsigned long i=1; i<event->SegmentDetectors["ECAL"].size(); i++){
-      posttrackid=event->SegmentDetectors["ECAL"].at(i).PrimaryId;
+    for(unsigned long i=1; i<event->SegmentDetectors[ECALNAME].size(); i++){
+      posttrackid=event->SegmentDetectors[ECALNAME].at(i).PrimaryId;
       //      std::cout<<"posttrackid:"<<posttrackid<<" nhit:"<<nhit<<std::endl;
       if(posttrackid==pretrackid) { nhit++;continue;}
       if(ecalMap_prim.find(pretrackid) ==ecalMap_prim.end())
@@ -1959,8 +1961,8 @@ void organizeHits_prim2(){
       {sttMap_prim2[trackid].push_back(i); sttMap_prim2[trackid].push_back(i);}    
   } // for
   
-  for(unsigned int i=0; i<event->SegmentDetectors["ECAL"].size(); i++){
-    trackid=event->SegmentDetectors["ECAL"].at(i).PrimaryId;
+  for(unsigned int i=0; i<event->SegmentDetectors[ECALNAME].size(); i++){
+    trackid=event->SegmentDetectors[ECALNAME].at(i).PrimaryId;
     if(ecalMap_prim2.find(trackid)==ecalMap_prim2.end()) { ecalMap_prim2[trackid].push_back(i); ecalMap_prim2[trackid].push_back(i);continue;}
     if(i-ecalMap_prim2[trackid].back()==1)
       ecalMap_prim2[trackid].back()=i;
@@ -1994,8 +1996,8 @@ void N_organizeHits_contr(){
       {sttMap_temp[trackid].push_back(i); sttMap_temp[trackid].push_back(i);}
   } // for
 
-  for(unsigned int i=0; i<event->SegmentDetectors["ECAL"].size(); i++){
-    trackid=event->SegmentDetectors["ECAL"].at(i).Contrib[0];
+  for(unsigned int i=0; i<event->SegmentDetectors[ECALNAME].size(); i++){
+    trackid=event->SegmentDetectors[ECALNAME].at(i).Contrib[0];
     if(ecalMap_temp.find(trackid)==ecalMap_temp.end()) { ecalMap_temp[trackid].push_back(i); ecalMap_temp[trackid].push_back(i);continue;}
     if(i-ecalMap_temp[trackid].back()==1)
       ecalMap_temp[trackid].back()=i;
@@ -2195,9 +2197,9 @@ bool getBackEcalE(int trackid, double &backEcalE, double sttEnteringT){
   if(inSTT(event->Trajectories[trackid].Points[n-1].Position.Vect())) return false;
   double totde=0;
   double de;
-  for(unsigned int i=0; i<event->SegmentDetectors["ECAL"].size(); i++){
-    if(trackid!= event->SegmentDetectors["ECAL"].at(i).Contrib[0] && trackid!=event->SegmentDetectors["ECAL"].at(i).PrimaryId) continue;
-    if(event->SegmentDetectors["ECAL"].at(i).Start.T()< sttEnteringT) continue;
+  for(unsigned int i=0; i<event->SegmentDetectors[ECALNAME].size(); i++){
+    if(trackid!= event->SegmentDetectors[ECALNAME].at(i).Contrib[0] && trackid!=event->SegmentDetectors[ECALNAME].at(i).PrimaryId) continue;
+    if(event->SegmentDetectors[ECALNAME].at(i).Start.T()< sttEnteringT) continue;
     get1ecalhit_info(i, de);
     totde+=de;
   }
@@ -2395,27 +2397,85 @@ std::vector<std::string> makefilelist(std::string st,int Nfilelist=0){
 }//////////////////////////////////////////////////////////////////
 
 
-int main(int argc, char *argv[]){
-  if(argc<4) { std::cout<<"at least three arguments needed: smeartype(0: stt, 1: ecal, 2, both) , input, output,  [debug1/2/3],[startentry],[nentry]"<<std::endl;return 0;}
-  debug=-1;
-  int smearRegion=std::atoi(argv[1]);
-  std::cout<<"smearRegion:"<<smearRegion<<std::endl;
+void usage () {
+    std::cout << "Usage:"<<std::endl;
+    std::cout << "    -g      -- select grain width: 779/870 "<<std::endl;
+    std::cout << "    -v      -- smear regions: stt/ecal/both"<<std::endl;
+    std::cout << "    -i      -- input file name "<<std::endl;
+    std::cout << "    -o      -- output file name "<<std::endl;
+    std::cout << "    -s      -- start entry (optional, for debugging) "<<std::endl;
+    std::cout << "    -n      -- n entry to process (optional, for debugging) "<<std::endl;
+    std::cout << "    -h      -- This help message." << std::endl;    
+    
+    exit(1);
+}
+
+int main(int argc, char** argv){
+    
+  if (argc<9) usage();
   int testStartEntry=-1;
   int testNEntry=-1;
-  //  ecalhit2vtx_max=std::atof(argv[4]);
-  //  std::cout<<" ecalhit2vtx_max:"<<ecalhit2vtx_max<<std::endl;
-  if(argc>=5){
-    if(std::strcmp(argv[4],"debug1")==0) debug=1;
-    else if(std::strcmp(argv[4],"debug2")==0) debug=2;
-    else if(std::strcmp(argv[4],"debug3")==0) debug=3;
+  std::string grainOption;
+  int smearRegion;
+  int debug=0;
+  int errflg = 0;
+  int c = 0;
+  std::string outFileName;
+  std::string inFileName;
+  while (!errflg && ((c=getopt(argc,argv,"g:v:i:o:dsnh")) != -1)) {
+      switch (c) {
+      case 'g': {
+	  // Toggle the validateGeometry flag.  The default value is set
+	  // above.
+	  grainOption = optarg;
+	  if(grainOption!="779" && grainOption!="870") usage();
+	  break;
+	          
+      }
+      case 'v':{
+	  std::string option=optarg;
+	  if(option=="stt") smearRegion=0;
+	  else if(option=="ecal") smearRegion=1;
+	  else if(option=="both") smearRegion=2;
+	  else usage();
+	  break;
+	  
+      }
+      case 'i':{
+	  inFileName=optarg;
+	  break;
+      }
+      case 'o':{
+	  outFileName=optarg;
+	  break;
+      }
+      case 'd':{
+	  debug=std::atoi(optarg);
+	  break;
+      }
+      case 's':{
+	  testStartEntry=std::atoi(optarg);
+	  break;
+      }
+      case 'n':{
+	  testNEntry=std::atoi(optarg);
+	  break;
+      }
+      case 'h':
+      default:
+	  usage();
+      }
+      
   }
-  if(argc>=6) { testStartEntry=std::atoi(argv[5]);}
-  if(argc==7) { testNEntry=std::atoi(argv[6]);}
-
   
-
+  debug=-1;
+  std::cout<<" grainOption:"<<grainOption<<std::endl;
+  std::cout<<" smearRegion:"<<smearRegion<<std::endl;   
+  std::cout<<" outFileName: "<<outFileName<<std::endl;
   std::cout<<" %%%%%%%%%%%%%%%%%%%%%%%% debug level ########################   :  "<<debug<<std::endl;
-
+  if(grainOption=="779") GrainandGapLength=795;
+  else if(grainOption=="870") GrainandGapLength=870.38;
+  else usage();
   //  outf=new TFile("outf.root","recreate");
   TFile *fpi0=new TFile("data/Histograms_1pi0_complete.root");
   TFile *fneutron_beta=new TFile("data/RecoVsTrue_Beta_RealCal_pdg2112_20190315_192325_ThrStt2.500000e-07.root");
@@ -2444,7 +2504,7 @@ int main(int argc, char *argv[]){
   hNeutron_beta_recotrue_stt->Smooth();
   hNeutron_beta_recotrue_ecal->Smooth();
   
-  outTreeF=new TFile(argv[3],"recreate");
+  outTreeF=new TFile(outFileName.c_str(),"recreate");
 
   TBranch * brEvtCode;
   TObjString* EvtCode = 0;
@@ -2520,8 +2580,8 @@ int main(int argc, char *argv[]){
   dbpdg = new TDatabasePDG();
   gSystem->Load("libGeom");  
   
-  std::cout<<"****************** input file:"<<argv[2]<<std::endl;
-  gFile=new TFile(argv[2]);
+  std::cout<<"****************** input file:"<<inFileName<<std::endl;
+  gFile=new TFile(inFileName.c_str());
   geo = (TGeoManager*) gFile->Get("EDepSimGeometry");
   gEDepSimTree = (TTree*) gFile->Get("EDepSimEvents");
   gEDepSimTree->SetBranchAddress("Event",&event);    
