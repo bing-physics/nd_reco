@@ -8,8 +8,14 @@
 
 1. cmake .
 2. make
-3. ./run.sh
-
+3.
+```
+./smearBMgo -g 870 -v both -i inputEdepSimFile.root  out.root
+```
+or check the detailed usage by
+```
+./smearBMgo -h
+```
 # how to read output
 
 > root readEdep_smeared.C
