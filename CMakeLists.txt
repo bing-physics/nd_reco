@@ -7,7 +7,7 @@ include("${ROOT_USE_FILE}")
 
 include_directories(${PROJECT_SOURCE_DIR})
 
-add_executable(smearBMgo smearBeamMonitoring_SAND.C)
-target_link_libraries(smearBMgo PUBLIC EDepSim::edepsim_io ${ROOT_LIBRARIES})
+add_executable(smear_for_beamMonitoring smearBeamMonitoring_SAND.C)
+target_link_libraries(smear_for_beamMonitoring PUBLIC EDepSim::edepsim_io ${ROOT_LIBRARIES})
 
 

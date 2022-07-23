@@ -1,3 +1,6 @@
+# NOTE:
+This smearing is for beam monitoring only, for standard SAND/STT smearing, check out this one: https://github.com/bingguo1/FastReco
+
 # nd_reco
 
 * Input : Edep-Sim root file
@@ -10,11 +13,11 @@
 2. make
 3.
 ```
-./smearBMgo -g 870 -v both -i inputEdepSimFile.root -o out.root
+./smear_for_beamMonitoring -g 870 -v both -i inputEdepSimFile.root -o out.root
 ```
 or check the detailed usage by
 ```
-./smearBMgo -h
+./smear_for_beamMonitoring -h
 ```
 # how to read output
 
